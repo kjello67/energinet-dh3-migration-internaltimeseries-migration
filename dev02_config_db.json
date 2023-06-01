@@ -1,0 +1,14 @@
+{
+  "DB_USERNAME":    "cgi_anita_fineid",
+  "DB_PASSWORD":    "****",
+  "DB_ALIAS":       "ORADEV02",
+  "DB_SID":         "ORADEV02",
+  "DB_PORT":        1542,
+  "DB_HOST":        "10.47.250.23",
+  "LOG_USERNAME":   "cgi_anita_fineid",
+  "LOG_PASSWORD":   "****",
+  "LOG_ALIAS":      "ORADEV02",
+  "LOG_SID":        "ORADEV02",
+  "LOG_PORT":       1542,
+  "LOG_HOST":       "10.47.250.23"
+}

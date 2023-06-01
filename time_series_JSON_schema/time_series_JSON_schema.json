@@ -1,0 +1,134 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "metering_point": {
+      "type": "object",
+      "properties": {
+        "metering_point_id": {
+          "type": "string",
+		  "minLength": 18,
+		  "maxLength": 35
+        },
+        "masterdata": {
+          "type": "array",
+          "items": [
+            {
+              "type": "object",
+              "properties": {
+                "grid_area": {
+                  "type": "string",
+				  "minLength": 3,
+				  "maxLength": 3
+                },
+                "type_of_mp": {
+                  "type": "string",
+				  "maxLength": 3,
+				  "enum": ["E17","E18","E20","D01","D02","D04","D05","D06","D07","D08","D09","D10","D11","D12","D13","D14","D15","D17","D18","D20","D99"]
+                },
+                "masterdata_start_date": {
+                  "type": "string",
+				  "format": "date-time"
+                },
+                "masterdata_end_date": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": [
+                "grid_area",
+                "type_of_mp",
+                "masterdata_start_date",
+                "masterdata_end_date"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "metering_point_id",
+        "masterdata"
+      ]
+    },
+    "time_series": {
+      "type": "array",
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "transaction_id": {
+              "type": [
+			    "string",
+			    "null"
+		      ]
+            },
+            "valid_from_date": {
+              "type": "string",
+			  "format": "date-time" 
+            },
+            "valid_to_date": {
+              "type": "string",
+			  "format": "date-time"
+            },
+            "transaction_insert_date": {
+              "type": "string",
+			  "format": "date-time"
+            },
+            "historical_flag": {
+              "type": "string",
+			  "maxLength": 1,
+			  "enum": ["N","Y"]
+            },
+            "resolution": {
+              "type": "string",
+			  "maxLength": 3,
+			  "enum": ["15","60","M"]
+            },
+            "unit": {
+              "type": "string",
+			  "maxLength": 5,
+			  "enum": ["KWH","MWH","MVARH","KVARH","KW"]
+            },
+            "values": {
+              "type": "array",
+			  "maxItems": 1000000,
+              "items": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "position": {
+                      "type": "integer",
+					  "minimum": 0,
+					  "maximum": 999999
+                    },
+                    "quantity": {
+                      "type": "number"
+                    },
+                    "quality": {
+                      "type": "string",
+					  "enum": ["E01", "56", "36", "D01", "QM"]
+                    }
+                  },
+                  "required": [
+                    "position",
+                    "quantity",
+                    "quality"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "transaction_id",
+            "valid_from_date",
+            "valid_to_date",
+            "transaction_insert_date",
+            "historical_flag",
+            "resolution",
+            "unit",
+            "values"
+          ]
+        }
+      ]
+    }
+  }
+}
