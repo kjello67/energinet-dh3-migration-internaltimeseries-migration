@@ -5,7 +5,28 @@ import (
 	"timeseries-migration/config"
 )
 
-//GetSQLSelectData returns the SQL statement used to retrieve the data
+//GetSQLSelectMasterData returns the SQL statement used to retrieve the master data
+func GetSQLSelectMasterData() string {
+
+	//Create the main body of the SQL statement
+	sql :=
+		`SELECT
+    metering_point_id,
+    grid_area,
+    type_of_mp,
+    valid_from_date,
+    valid_to_date
+FROM
+    ccr_own.isc_metering_points    isc
+WHERE
+        isc.metering_point_id = :meteringPointId
+    AND valid_from_date != nvl(valid_to_date, valid_from_date + 1)`
+
+	return sql
+}
+
+
+//GetSQLSelectData returns the SQL statement used to retrieve the timeseries data
 func GetSQLSelectData() string {
 
 	//Create the main body of the SQL statement
@@ -97,7 +118,7 @@ select * from
 	where  metering_point_id = :meteringPointId
 --	group by metering_point_id, transaction_id, valid_from_date, valid_to_date, inserted_timestamp, historical_flag, resolution, unit `
 	//Set the order of the SQL statement
-	sqlOrder := `   ORDER BY metering_point_id, valid_from_date, historical_flag `
+	sqlOrder := `   ORDER BY metering_point_id, valid_from_date asc, historical_flag,  position asc`
 
 	return sql + sqlOrder
 }

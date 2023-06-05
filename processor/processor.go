@@ -49,6 +49,15 @@ func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation,
 	close(meteringPoints)
 
 	//Prepare the SQL query that retrieves the time series
+	sqlstmtSelectMasterData, err := db.Prepare(sqls.GetSQLSelectMasterData())
+	if err != nil {
+		log.Error(err)
+		return false, err
+	}
+	defer sqlstmtSelectMasterData.Close()
+
+
+	//Prepare the SQL query that retrieves the time series
 	sqlstmtSelectTimesSeries, err := db.Prepare(sqls.GetSQLSelectData())
 	if err != nil {
 		log.Error(err)
@@ -83,7 +92,7 @@ func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation,
 		wg.Add(1)
 		go func() {
 			//Create a worker
-			metaInfo, err := TimeSeriesWorker(sqlstmtSelectTimesSeries, sqlstmtNoTimeSeriesFound, meteringPoints, fromTimeFormatted, toTimeFormatted, fileLocation, run.MigrationRunId, skipDBUpdate)
+			metaInfo, err := TimeSeriesWorker(sqlstmtSelectMasterData, sqlstmtSelectTimesSeries, sqlstmtNoTimeSeriesFound, meteringPoints, fromTimeFormatted, toTimeFormatted, fileLocation, run.MigrationRunId, skipDBUpdate)
 
 			res := result{metaInfo: nil, mainErr: nil, returnValue: true}
 			if err != nil {
@@ -223,7 +232,7 @@ func GetMeteringPoints(db *sql.DB, meteringPoints chan<- []string, nWorkload int
 }
 
 //TimeSeriesWorker reads the metering points channel and writes the time series for each metering point in a separate json file
-func TimeSeriesWorker(sqlstmtSelectTimeSeries, sqlstmtNoTimeSeriesFound *sql.Stmt, items <-chan []string, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool) (map[string]metaInfo, error) {
+func TimeSeriesWorker(sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtNoTimeSeriesFound *sql.Stmt, items <-chan []string, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool) (map[string]metaInfo, error) {
 
 	timer := time.Now()
 	timeSeriesInfo := map[string]metaInfo{}
@@ -234,7 +243,7 @@ func TimeSeriesWorker(sqlstmtSelectTimeSeries, sqlstmtNoTimeSeriesFound *sql.Stm
 		for _, itemId := range itemSlice {
 
 			//The list of time series that will be written to the file
-			data, metaInfo, err := getTimeSeriesList(itemId, sqlstmtSelectTimeSeries)
+			data, metaInfo, err := getTimeSeriesList(itemId, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries)
 
 			if metaInfo != nil {
 				timeSeriesInfo[itemId] = *metaInfo
@@ -298,23 +307,71 @@ func TimeSeriesWorker(sqlstmtSelectTimeSeries, sqlstmtNoTimeSeriesFound *sql.Stm
 	return timeSeriesInfo, nil
 }
 
-func getTimeSeriesList(meteringPointId string, sqlstmtSelectTimeSeries *sql.Stmt) (models.Data, *metaInfo, error) {
+func getMasterData(meteringPointId string, sqlstmtSelectMasterData *sql.Stmt, PST *time.Location)  ([]models.Masterdata, error) {
+
+	var masterDataRows []models.Masterdata
+	var masterDataRow models.Masterdata
+	var gridArea, typeOfMP, validFromDateFormatted,validToDateFormatted  string
+	var validFromDate, validToDate NullTime
+
+	//Run the prepared SQL query that retrieves the time series
+	rows, err := sqlstmtSelectMasterData.Query(meteringPointId)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	//Loop through the result from the executed SQL query
+	for rows.Next() {
+
+		//Store the values from the current line in the result to local variables
+		rows.Scan(
+			&meteringPointId, &gridArea, &typeOfMP, &validFromDate, &validToDate)
+
+		validFromDateFormatted, err = formatDate(PST, validFromDate)
+		if err != nil {
+			log.Error(err)
+			return masterDataRows, err
+		}
+		validToDateFormatted, err = formatDate(PST, validToDate)
+		if err != nil {
+			log.Error(err)
+			return masterDataRows, err
+		}
+		masterDataRow.GridArea = gridArea
+		masterDataRow.TypeOfMP = typeOfMP
+		masterDataRow.MasterDataStartDate = validFromDateFormatted
+		masterDataRow.MasterDataEndDate = validToDateFormatted
+		masterDataRows = append(masterDataRows, masterDataRow)
+	}
+	return masterDataRows, nil
+}
+
+
+func getTimeSeriesList(meteringPointId string, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries *sql.Stmt) (models.Data, *metaInfo, error) {
 	//The list of time series that will be written to the file
 	var meteringPointData models.MeteringPointData
 	meteringPointData.MeteringPointId = meteringPointId
 	var masterData []models.Masterdata
-	var masterDataRow models.Masterdata
-	// TODO Don't hard code the MP values below
-	masterDataRow.GridArea = "347"
-	masterDataRow.TypeOfMP = "D99"
-	masterDataRow.MasterDataStartDate = "2021-01-01T00:00:00"
-	masterDataRow.MasterDataEndDate = "2022-00-00T00:00:00"
-	masterData = append(masterData, masterDataRow)
+	var data models.Data
+
+	PST, err := time.LoadLocation(config.GetTimeLocation())
+	if err != nil {
+		log.Error(err)
+		return data, nil, err
+	}
+
+	masterData, err = getMasterData(meteringPointId, sqlstmtSelectMasterData, PST)
+	if err != nil {
+		log.Error(err)
+		return data, nil, err
+	}
+
 	meteringPointData.MasterData = masterData
 
 	var timeSeriesList []models.TimeSeriesData
 
-	var data models.Data
 	data.MeteringPointData = meteringPointData
 	data.TimeSeries = timeSeriesList
 
@@ -333,19 +390,14 @@ func getTimeSeriesList(meteringPointId string, sqlstmtSelectTimeSeries *sql.Stmt
 	var transactionIdStr string
 	var historicalFlag, resolution, unit string
 	var validFromDate, validToDate, transactionInsertDate NullTime
-	var validFromDateFormatted, validToDateFormatted, transactionInsertDateFormatted string
+	var validFromDateFormatted, prevValidFromDateFormatted, validToDateFormatted, transactionInsertDateFormatted string
 	var timeSeriesValue models.TimeSeriesValue
 	var position int
 	var quantity float64
 	var quality string
 	var readingTime NullTime
 	//var readingTimeFormatted string
-
-	PST, err := time.LoadLocation(config.GetTimeLocation())
-	if err != nil {
-		log.Error(err)
-		return data, nil, err
-	}
+	prevValidFromDateFormatted = ""
 
 	//Loop through the result from the executed SQL query
 	for rows.Next() {
@@ -386,6 +438,15 @@ func getTimeSeriesList(meteringPointId string, sqlstmtSelectTimeSeries *sql.Stmt
 		//	return timeSeriesList, nil, err
 		//}
 
+		if prevValidFromDateFormatted != validFromDateFormatted {
+			if prevValidFromDateFormatted != "" {
+				timeSeriesData.TimeSeriesValues = timeSerieValues
+				timeSerieValues = nil
+
+				timeSeriesList = append(timeSeriesList, timeSeriesData)
+			}
+		}
+
 		timeSeriesValue.Position = position
 		timeSeriesValue.Quantity = quantity
 		timeSeriesValue.Quality = quality
@@ -399,16 +460,17 @@ func getTimeSeriesList(meteringPointId string, sqlstmtSelectTimeSeries *sql.Stmt
 		timeSeriesData.HistoricalFlag = historicalFlag
 		timeSeriesData.Resolution = resolution
 		timeSeriesData.Unit = unit
-
+/*
 		if position == 1 && len(timeSerieValues) > 0 {
 			timeSeriesData.TimeSeriesValues = timeSerieValues
 			timeSerieValues = nil
 		}
-
+*/
 		timeSeriesValue.Position = position
 		timeSeriesValue.Quantity = quantity
 		timeSeriesValue.Quality = quality
 		timeSerieValues = append(timeSerieValues, timeSeriesValue)
+		prevValidFromDateFormatted = validFromDateFormatted
 	}
 	timeSeriesData.TimeSeriesValues = timeSerieValues
 	timeSeriesList = append(timeSeriesList, timeSeriesData)
