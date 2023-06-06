@@ -22,7 +22,7 @@ func logError(err error) (bool, error) {
 }
 
 // MigrateTimeSeries extracts metering points from the database and writes the time series to json files for migration to DHUB3
-func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation, fromTime, toTime string, sqlFlag bool, sqlItemCount, sqlItemIds string, run *models.ScheduledRun, skipDBUpdate bool) (bool, error) {
+func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation string, sqlFlag bool, sqlItemCount, sqlItemIds string, run *models.ScheduledRun, skipDBUpdate bool) (bool, error) {
 	var err error
 
 	fromTimeFormatted := run.PeriodFromDate.Format(config.GetExportDateLayout())
@@ -236,6 +236,8 @@ func TimeSeriesWorker(sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtN
 
 	timer := time.Now()
 	timeSeriesInfo := map[string]metaInfo{}
+	fromTime, _ := time.Parse(config.GetExportDateLayout(), fromTimeFormatted)
+	toTime, _ := time.Parse(config.GetExportDateLayout(), toTimeFormatted)
 
 	//For each metering point read from the metering points channel
 	for itemSlice := range items {
@@ -243,7 +245,7 @@ func TimeSeriesWorker(sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtN
 		for _, itemId := range itemSlice {
 
 			//The list of time series that will be written to the file
-			data, metaInfo, err := getTimeSeriesList(itemId, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries)
+			data, metaInfo, err := getTimeSeriesList(itemId, fromTime, toTime,  sqlstmtSelectMasterData, sqlstmtSelectTimeSeries)
 
 			if metaInfo != nil {
 				timeSeriesInfo[itemId] = *metaInfo
@@ -259,8 +261,6 @@ func TimeSeriesWorker(sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtN
 				}
 
 				//Sets the filename based on the current objectId. Will have extension tmp until all are done and then changed to json
-				fromTime, _ := time.Parse(config.GetExportDateLayout(), fromTimeFormatted)
-				toTime, _ := time.Parse(config.GetExportDateLayout(), toTimeFormatted)
 				fileNameWithoutExtension :=
 					config.GetFilenamePrefix() +
 						config.GetFilenameDelimiter() +
@@ -349,7 +349,7 @@ func getMasterData(meteringPointId string, sqlstmtSelectMasterData *sql.Stmt, PS
 }
 
 
-func getTimeSeriesList(meteringPointId string, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries *sql.Stmt) (models.Data, *metaInfo, error) {
+func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntilTime time.Time,  sqlstmtSelectMasterData, sqlstmtSelectTimeSeries *sql.Stmt) (models.Data, *metaInfo, error) {
 	//The list of time series that will be written to the file
 	var meteringPointData models.MeteringPointData
 	meteringPointData.MeteringPointId = meteringPointId
@@ -375,8 +375,14 @@ func getTimeSeriesList(meteringPointId string, sqlstmtSelectMasterData, sqlstmtS
 	data.MeteringPointData = meteringPointData
 	data.TimeSeries = timeSeriesList
 
+	//processedFromTime := "'to_date('31.03.2016 22:00', 'DD.MM.YYYY HH24:MI')"
+	//processedUntilTime := "to_date('31.12.2017 23:00', 'DD.MM.YYYY HH24:MI')"
 	//Run the prepared SQL query that retrieves the time series
-	rows, err := sqlstmtSelectTimeSeries.Query(meteringPointId)
+
+	//processedFromTime := time.Date(2016, 03, 31, 22, 0, 0, 0, time.UTC)
+	//processedUntilTime := time.Date(2017, 12, 31, 23, 0, 0, 0, time.UTC)
+
+	rows, err := sqlstmtSelectTimeSeries.Query(meteringPointId, processedFromTime, processedUntilTime)
 	if err != nil {
 		log.Error(err)
 		return data, nil, err

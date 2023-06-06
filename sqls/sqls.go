@@ -31,92 +31,143 @@ func GetSQLSelectData() string {
 
 	//Create the main body of the SQL statement
 	sql :=
-		`with ts as (
-select * from
-		(
-			SELECT   /*+ leading(m) use_nl(t) use_nl(v) use_nl(r) */
-				m.OBJECTID                     as metering_point_id,
-				r.transref                     as transaction_id,
-				t.START_DATE                   as valid_from_date,
-				t.END_DATE                     as valid_to_date,
-				t.SERIES_TIMESTAMP             as inserted_timestamp,
-				nvl2(t.hist_timestamp,'Y','N') as historical_flag, 
-				t.RESOLUTION                   as resolution,        
-				t.UNIT                         as unit,  
-				round(months_between(v.READING_START_DATE, t.START_DATE) +1, 0)                  as position,
-				v.READING_START_DATE           as READING_TIME,
-				v.AMOUNT                       as quantity,
-				decode (V.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B','D01', '?', 'QM')   as quality
-			from CHANGE.S_PERIODIC_SERIES_VALUE v,
-				CHANGE.S_PERIODIC_TIMESERIES t,
-				CHANGE.s_recipient r,
-				READING.m_meterpoint m
-			where t.PERIODIC_TIMESERIES_SEQNO = v.PERIODIC_TIMESERIES_SEQNO
-			and m.MPOINT_SEQNO = t.UTVEKSLINGSOBJEKTNR
-			and t.sender_ref = r.meldingsnr_data
-			AND t.SERIES_TIMESTAMP >= TO_DATE('2016-04-01', 'YYYY-MM-DD') -- :fromDate
-			AND t.SERIES_TIMESTAMP <  TO_DATE('2018-01-01', 'YYYY-MM-DD') -- :toDate
-		union all		
-			SELECT  /*+ leading(mis) use_nl(b) use_nl(sv) */
-				MIS.SERIE_OBJECTID as metering_point_id,
-				B.import_batch_id as transaction_id,
-				MIS.MIN_READING_TIME as valid_from_date,
-				MIS.MAX_READING_TIME as valid_to_date,
-				MIS.SERIE_TIMESTAMP as inserted_timestamp,
-				'N' as historical_flag,           
-				to_char(MIS.RESOLUTION)   as resolution,         
-				MIS.UNIT         as unit,     
-				case  
-				when mis.resolution = 60 then round(24*(SV.READING_TIME - MIS.MIN_READING_TIME)+1)
-				when mis.resolution = 15 then round(96*(SV.READING_TIME - MIS.MIN_READING_TIME)+1)
-				else 1 end as position,
-				SV.READING_TIME,
-				SV.READING_VALUE as quantity,
-				decode (SV.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B','D01', '?', 'QM')   as quality
-			FROM READING.M_IMPORT_SERIE MIS,
-				READING.M_SERIE_VALUE  SV,
-				READING.M_BATCH        B
-			WHERE MIS.BATCH_SEQNO = B.BATCH_SEQNO
-			AND MIS.IMPORT_SERIE_SEQNO = SV.IMPORT_SERIE_SEQNO
-			and MIS.SERIE_STATUS = '2'
-			and not (mis.imp_resolution = 60 and mis.sender_ref like 'Calculated from 15 min values')
-			AND MIS.SERIE_TIMESTAMP >= TO_DATE('2016-04-01', 'YYYY-MM-DD') -- :fromDate
-			AND MIS.SERIE_TIMESTAMP <  TO_DATE('2018-01-01', 'YYYY-MM-DD') -- :toDate
-			-- #13434 short discussion with Rune -  included all timeseries with reporting counter zero with exception of batch type ‘CA’
-			AND B.batch_type != 'CA'
-		union all    
-			SELECT  /*+ leading(mis) use_nl(b) use_nl(sv) */
-				MIS.SERIE_OBJECTID as metering_point_id,
-				B.import_batch_id as transaction_id,
-				MIS.MIN_READING_TIME as valid_from_date,
-				MIS.MAX_READING_TIME as valid_to_date,
-				MIS.SERIE_TIMESTAMP as inserted_timestamp,
-				'Y' as historical_flag,           
-				to_char(MIS.RESOLUTION)   as resolution,         
-				MIS.UNIT         as unit,     
-				case  
-				when mis.resolution = 60 then round(24*(SV.READING_TIME - MIS.MIN_READING_TIME)+1)
-				when mis.resolution = 15 then round(96*(SV.READING_TIME - MIS.MIN_READING_TIME)+1)
-				else 1 end as position,
-				SV.READING_TIME,
-				SV.READING_VALUE as quantity,
-				decode (SV.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B','D01', '?', 'QM')   as quality
-			FROM READING.M_IMPORT_SERIE MIS,
-				READING.M_SERIE_VALUE_HIST  SV,
-				READING.M_BATCH        B
-			WHERE MIS.BATCH_SEQNO = B.BATCH_SEQNO
-			AND MIS.IMPORT_SERIE_SEQNO = SV.OLD_SERIE_SEQNO 
-			and MIS.SERIE_STATUS = '2'
-			and not (mis.imp_resolution = 60 and mis.sender_ref like 'Calculated from 15 min values')
-			AND MIS.SERIE_TIMESTAMP >= TO_DATE('2016-04-01', 'YYYY-MM-DD') -- :fromDate
-			AND MIS.SERIE_TIMESTAMP <  TO_DATE('2018-01-01', 'YYYY-MM-DD') -- :toDate
-			-- #13434 short discussion with Rune -  included all timeseries with reporting counter zero with exception of batch type ‘CA’
-			AND B.batch_type != 'CA'
-		)	
-	)
-    select * from ts
-	where  metering_point_id = :meteringPointId
---	group by metering_point_id, transaction_id, valid_from_date, valid_to_date, inserted_timestamp, historical_flag, resolution, unit `
+		`WITH
+param AS
+(SELECT
+   :meteringPointId AS metering_point_id, -- p_metering_point_id
+   :processedFromTime AS processed_from_time, -- P_CUR_FROM_DATE_PERIOD
+   :processedUntilTime AS processed_until_time -- P_CUR_TO_DATE_PERIOD
+ FROM dual),
+metering_point AS -- metering points to be included (for now only 1)
+(SELECT
+   m.MPOINT_SEQNO,
+   p.metering_point_id
+ FROM param p
+   JOIN reading.m_meterpoint m ON m.objectid = p.metering_point_id),
+counter AS -- counters for the relevant metering points
+(SELECT 
+   m.MPOINT_SEQNO,
+   c.counter_seqno,
+   c.IS_COUNTER_CODE,
+   c.COUNTER_CLASS_ID
+ FROM metering_point m
+   JOIN reading.m_counter c ON c.mpoint_seqno = m.mpoint_seqno),
+periodic_value AS -- the periodical volumes (monthly) stored as "time series" in IS Change
+(SELECT
+   pt.PERIODIC_TIMESERIES_SEQNO,
+   m.mpoint_seqno,
+   pt.START_DATE,
+   pt.END_DATE,
+   pt.RESOLUTION,
+   pt.UNIT,
+   pt.SERIES_TIMESTAMP,
+   r.TRANSREF,
+   nvl2(pt.HIST_TIMESTAMP, 'Y', 'N') AS historical_flag,
+   round(MONTHS_BETWEEN(pv.READING_START_DATE, pt.START_DATE) + 1, 0) AS position,
+   pv.READING_START_DATE,
+   pv.AMOUNT,
+   pv.DATA_ORIGIN
+ FROM param p,
+   metering_point m
+   JOIN CHANGE.S_PERIODIC_TIMESERIES pt ON pt.UTVEKSLINGSOBJEKTNR = m.MPOINT_SEQNO /* short-cut, but will always be equal for Energinet */
+   LEFT JOIN CHANGE.S_RECIPIENT r ON r.MELDINGSNR_DATA = to_number(pt.sender_ref default 0 on conversion error) AND r.MELDINGSNR_DATA > 0 AND r.DATA_KILDE = 'S'
+   JOIN CHANGE.S_PERIODIC_SERIES_VALUE pv ON pv.PERIODIC_TIMESERIES_SEQNO = pt.PERIODIC_TIMESERIES_SEQNO
+ WHERE
+   pt.SERIES_TIMESTAMP > p.processed_from_time - 1/24/60/60 AND 
+   pt.SERIES_TIMESTAMP < p.processed_until_time),
+series AS -- time series for the selected metering points
+(SELECT
+   s.IMPORT_SERIE_SEQNO,
+   c.MPOINT_SEQNO ,
+   c.COUNTER_SEQNO ,
+   s.MIN_READING_TIME,
+   s.max_reading_time,
+   s.MAX_READING_TIME + s.RESOLUTION / 60 / 24 AS end_series_time, -- verify - this is not equal to original query!
+   s.RESOLUTION,
+   s.UNIT,
+   s.SERIE_TIMESTAMP,
+   r.TRANSREF,
+   b.IMPORT_BATCH_ID 
+ FROM param p,
+   counter c
+   JOIN reading.m_import_serie s ON s.counter_seqno = c.COUNTER_SEQNO
+   JOIN reading.M_BATCH b ON b.batch_seqno = s.batch_seqno
+   LEFT JOIN CHANGE.S_RECIPIENT r ON r.MELDINGSNR_DATA = to_number(s.SENDER_REF default 0 on conversion error) AND r.meldingsnr_data > 0 AND r.DATA_KILDE = 'S'
+ WHERE
+   s.SERIE_STATUS = 2 AND -- it has been mentioned to also include status 9 - to be verified
+   s.SERIE_TIMESTAMP > p.processed_from_time - 1/24/60/60 AND 
+   s.SERIE_TIMESTAMP < p.processed_until_time AND
+   -- is there a better way to exclude these?
+   not (s.RESOLUTION = 60 and s.SENDER_REF like 'Calculated from 15 min values') AND
+   -- what is the purpose of this one?
+   b.BATCH_TYPE <> 'CA'),
+series_value AS -- values for each of the time series (active)
+(SELECT
+   s.IMPORT_SERIE_SEQNO,
+   v.READING_TIME,
+   v.READING_VALUE,
+   v.DATA_ORIGIN,
+   'N' as historical_flag   
+ FROM series s
+   JOIN reading.M_SERIE_VALUE v ON v.IMPORT_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO),
+historical_value AS -- historical values for each of the time series 
+(SELECT
+   s.IMPORT_SERIE_SEQNO,
+   h.READING_TIME,
+   h.READING_VALUE,
+   h.DATA_ORIGIN,
+   'Y' AS historical_flag
+ FROM series s
+   JOIN reading.M_SERIE_VALUE_HIST h ON h.OLD_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO)
+SELECT -- Main select
+   m.metering_point_id,
+   v.transref AS transaction_id,
+   v.valid_from_date,
+   v.valid_to_date,
+   v.inserted_timestamp,
+   v.historical_flag,
+   v.resolution,
+   v.unit,
+   v.POSITION,
+   v.reading_time,
+   v.quantity,
+   decode(v.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B', 'D01', '?', 'QM') AS quality
+from
+(SELECT -- values of series in IS Metering, both active and historical
+   s.MPOINT_SEQNO,
+   s.min_reading_time AS valid_from_date,
+   s.end_series_time AS valid_to_date,
+   s.UNIT,
+   to_char(s.RESOLUTION) AS resolution,
+   s.SERIE_TIMESTAMP AS inserted_timestamp,
+   s.TRANSREF,
+   CASE 
+    WHEN s.RESOLUTION IN (15, 60)
+      THEN round((sv.READING_TIME - s.MIN_READING_TIME) * 24 * 60 / s.RESOLUTION + 1)
+   END AS position,
+   sv.reading_time,
+   sv.historical_flag,
+   sv.reading_value AS quantity,
+   sv.data_origin
+FROM (SELECT * FROM series_value UNION ALL SELECT * FROM historical_value) sv
+   JOIN series s ON s.IMPORT_SERIE_SEQNO = sv.IMPORT_SERIE_SEQNO
+UNION ALL 
+SELECT -- values of periodic (monthly) time series in IS Change
+   pv.mpoint_seqno,
+   pv.start_date AS valid_from_date,
+   pv.END_date AS valid_to_date,
+   pv.unit,
+   pv.resolution,
+   pv.series_timestamp AS inserted_timestamp,
+   pv.transref,
+   pv.POSITION,
+   pv.READING_START_DATE AS reading_time,
+   pv.historical_flag,
+   pv.amount AS quantity,
+   pv.data_origin
+FROM periodic_value pv) v
+ JOIN METERING_POINT m ON m.mpoint_seqno = v.mpoint_seqno
+ `
 	//Set the order of the SQL statement
 	sqlOrder := `   ORDER BY metering_point_id, valid_from_date asc, historical_flag,  position asc`
 

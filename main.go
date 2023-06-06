@@ -94,8 +94,6 @@ func main() {
 			var sqlItemIds = flag.String("sqlItemIds", configurations.SQL_ITEM_ID, "The SQL to fetch the items to be migrated")
 			var nWorkload = flag.Int("workload", 1, "Sets the number of items each worker will process per database request. Default value is 5")
 			var fileLocation = flag.String("location", configurations.FILE_LOCATION, "Where to store the exported JSON logFile")
-			var fromTime = flag.String("dhubFrom", configurations.FROM_DATE, "From date of the export period")
-			var toTime = flag.String("dhubTo", configurations.TO_DATE, "To date of the export period")
 			flag.Parse()
 
 			//Update the status to running
@@ -114,7 +112,7 @@ func main() {
 					errorMessage = err.Error()
 				} else {
 					//Call the function that will extract the grid area and write the time series to files in the json format
-					ok, err := processor.MigrateTimeSeries(*nWorkers, *nWorkload, db, logDb, *fileLocation, *fromTime, *toTime, *sqlFlag, *sqlItemCount, *sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE)
+					ok, err := processor.MigrateTimeSeries(*nWorkers, *nWorkload, db, logDb, *fileLocation, *sqlFlag, *sqlItemCount, *sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE)
 					if err != nil {
 						log.Error(err)
 						errorMessage = err.Error()
