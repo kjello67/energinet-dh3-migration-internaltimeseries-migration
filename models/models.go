@@ -42,7 +42,8 @@ type TimeSeriesData struct {
 	HistoricalFlag        string            `json:"historical_flag"`
 	Resolution            string            `json:"resolution"`
 	Unit                  string            `json:"unit"`
-	Status                string            `json:"status,omitempty"`
+	Status                int               `json:"status,omitempty"`
+	ReadReason            string            `json:"read_reason,omitempty"`
 	TimeSeriesValues      []TimeSeriesValue `json:"values,omitempty"`
 }
 

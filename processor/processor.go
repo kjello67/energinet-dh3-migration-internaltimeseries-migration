@@ -283,7 +283,7 @@ func TimeSeriesWorker(sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtN
 				}
 			} else {
 				//No time series found for MP
-				log.Debug("No time series found for order number ", itemId)
+				log.Debug("No time series found for meterpoint ", itemId)
 
 				if config.GetScheduledRunFromMigrationTable() {
 					if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
@@ -387,13 +387,13 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	//Variables to hold the time series
 	var timeSeriesData models.TimeSeriesData
 	var timeSerieValues []models.TimeSeriesValue
-	var transactionId NullString
-	var transactionIdStr string
+	var transactionId, readReason NullString
+	var transactionIdStr, readReasonStr string
 	var historicalFlag, resolution, unit string
 	var validFromDate, validToDate, transactionInsertDate NullTime
 	var validFromDateFormatted, prevValidFromDateFormatted, validToDateFormatted, transactionInsertDateFormatted string
 	var timeSeriesValue models.TimeSeriesValue
-	var position int
+	var position, serieStatus int
 	var quantity float64
 	var quality string
 	var readingTime NullTime
@@ -422,7 +422,9 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			&position,
 			&readingTime,
 			&quantity,
-			&quality)
+			&quality,
+			&serieStatus,
+			&readReason)
 
 		validFromDateFormatted, err = formatDate(PST, validFromDate)
 		if err != nil {
@@ -456,7 +458,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		timeSeriesValue.Quality = quality
 
 		transactionIdStr = formatNullString(transactionId)
-
+		readReasonStr = formatNullString(readReason)
 
 		timeSeriesData.TransactionId = transactionIdStr
 		timeSeriesData.ValidFromDate = validFromDateFormatted
@@ -476,9 +478,10 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			}
 		}
 
-
 		timeSeriesData.Resolution = resolution
 		timeSeriesData.Unit = unit
+		timeSeriesData.Status = serieStatus
+		timeSeriesData.ReadReason = readReasonStr
 		timeSeriesValue.Position = position
 		timeSeriesValue.Quantity = quantity
 		timeSeriesValue.Quality = quality

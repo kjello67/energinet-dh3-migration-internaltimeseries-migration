@@ -66,7 +66,8 @@ periodic_value AS -- the periodical volumes (monthly) stored as "time series" in
    round(MONTHS_BETWEEN(pv.READING_START_DATE, pt.START_DATE) + 1, 0) AS position,
    pv.READING_START_DATE,
    pv.AMOUNT,
-   pv.DATA_ORIGIN
+   pv.DATA_ORIGIN,
+   pt.CANCELLED
  FROM param p,
    metering_point m
    JOIN CHANGE.S_PERIODIC_TIMESERIES pt ON pt.UTVEKSLINGSOBJEKTNR = m.MPOINT_SEQNO /* short-cut, but will always be equal for Energinet */
@@ -87,14 +88,16 @@ series AS -- time series for the selected metering points
    s.UNIT,
    s.SERIE_TIMESTAMP,
    r.TRANSREF,
-   b.IMPORT_BATCH_ID 
+   b.IMPORT_BATCH_ID,
+   s.serie_status as serie_status, 
+   s.read_reason as read_reason
  FROM param p,
    counter c
    JOIN reading.m_import_serie s ON s.counter_seqno = c.COUNTER_SEQNO
    JOIN reading.M_BATCH b ON b.batch_seqno = s.batch_seqno
    LEFT JOIN CHANGE.S_RECIPIENT r ON r.MELDINGSNR_DATA = to_number(s.SENDER_REF default 0 on conversion error) AND r.meldingsnr_data > 0 AND r.DATA_KILDE = 'S'
  WHERE
-   s.SERIE_STATUS = 2 AND -- it has been mentioned to also include status 9 - to be verified
+   s.SERIE_STATUS in (2,9) AND -- it has been mentioned to also include status 9 - to be verified
    s.SERIE_TIMESTAMP > p.processed_from_time - 1/24/60/60 AND 
    s.SERIE_TIMESTAMP < p.processed_until_time AND
    -- is there a better way to exclude these?
@@ -131,7 +134,9 @@ SELECT -- Main select
    v.POSITION,
    v.reading_time,
    v.quantity,
-   decode(v.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B', 'D01', '?', 'QM') AS quality
+   decode(v.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B', 'D01', '?', 'QM') AS quality,
+   v.serie_status as serie_status, 
+   v.read_reason
 from
 (SELECT -- values of series in IS Metering, both active and historical
    s.MPOINT_SEQNO,
@@ -148,7 +153,9 @@ from
    sv.reading_time,
    sv.historical_flag,
    sv.reading_value AS quantity,
-   sv.data_origin
+   sv.data_origin, 
+   s.serie_status, 
+   s.read_reason
 FROM (SELECT * FROM series_value UNION ALL SELECT * FROM historical_value) sv
    JOIN series s ON s.IMPORT_SERIE_SEQNO = sv.IMPORT_SERIE_SEQNO
 UNION ALL 
@@ -164,7 +171,9 @@ SELECT -- values of periodic (monthly) time series in IS Change
    pv.READING_START_DATE AS reading_time,
    pv.historical_flag,
    pv.amount AS quantity,
-   pv.data_origin
+   pv.data_origin,
+   decode(pv.CANCELLED, 1, 6, 2) AS serie_status,
+   null as read_reason
 FROM periodic_value pv) v
  JOIN METERING_POINT m ON m.mpoint_seqno = v.mpoint_seqno
  `
