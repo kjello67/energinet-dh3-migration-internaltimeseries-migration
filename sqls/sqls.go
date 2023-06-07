@@ -177,15 +177,18 @@ FROM periodic_value pv) v
 //GetSQLInsertFinishedTimeSeriesExportFile returns the SQL statement used to insert "data found""
 func GetSQLInsertFinishedTimeSeriesExportFile() string {
 	return " insert into " + config.GetExportProgressTableName() +
-		" (MIGRATION_RUN_ID, MIGRATION_DOMAIN, EXPORTED_FROM_DATE, EXPORTED_TO_DATE, EXPORT_STATUS, DATA_FOUND, FILE_NAME, METERING_POINT_ID) " +
-		" values (:migrationRunId, '" + config.GetDomain() + "', TO_DATE(:fromTimeDDMMYYYYHHMISS, 'DD.MM.YYYY HH24:MI:SS'), TO_DATE(:toTimeDDMMYYYYHHMISS, 'DD-MM-YYYY HH24:MI:SS'), '" + config.GetStatusFinished() + "', :dataFound, :fileName, :objectId)"
+		" (MIGRATION_RUN_ID, MIGRATION_DOMAIN, EXPORTED_FROM_DATE, EXPORTED_TO_DATE, EXPORT_STATUS, DATA_FOUND, FILE_NAME, FILE_DETAILS, METERING_POINT_ID) " +
+		" values (:migrationRunId, '" + config.GetDomain() + "', TO_DATE(:fromTimeDDMMYYYYHHMISS, 'DD.MM.YYYY HH24:MI:SS'), TO_DATE(:toTimeDDMMYYYYHHMISS, 'DD-MM-YYYY HH24:MI:SS'), '" + config.GetStatusFinished() + "', " +
+		" :dataFound, :fileName, :fileDetails, :objectId)"
 }
 
 //GetSQLInsertNoDataFound returns the SQL statement used to
 func GetSQLInsertNoDataFound() string {
 	return " insert into " + config.GetExportProgressTableName() +
-		" (MIGRATION_RUN_ID, METERING_POINT_ID, MIGRATION_DOMAIN, EXPORTED_FROM_DATE, EXPORTED_TO_DATE, EXPORT_STATUS, DATA_FOUND) " +
-		" values (:migrationRunId, :objectId, '" + config.GetDomain() + "', TO_DATE(:fromTimeDDMMYYYYHHMISS, 'DD-MM-YYYY HH24:MI:SS'), TO_DATE(:toTimeDDMMYYYYHHMISS, 'DD-MM-YYYY HH24:MI:SS'), '" + config.GetStatusFinished() + "', :dataFound)"
+		" (MIGRATION_RUN_ID, MIGRATION_DOMAIN, EXPORTED_FROM_DATE, EXPORTED_TO_DATE, EXPORT_STATUS, DATA_FOUND, FILE_NAME, FILE_DETAILS, METERING_POINT_ID) " +
+		" values (:migrationRunId, '" + config.GetDomain() + "', TO_DATE(:fromTimeDDMMYYYYHHMISS, 'DD-MM-YYYY HH24:MI:SS'), " +
+		" TO_DATE(:toTimeDDMMYYYYHHMISS, 'DD-MM-YYYY HH24:MI:SS'), '" + config.GetStatusFinished() + "',  " +
+		" :dataFound, :fileName, :fileDetails, :objectId)"
 }
 
 //GetSQLUpdateStatusToRunning returns the SQL statement used to

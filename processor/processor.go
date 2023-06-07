@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
@@ -137,13 +138,12 @@ func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation 
 			for i := 0; i < len(filenames); i++ {
 				//Run the prepared SQL query that inserts to the progress table
 				filename := filenames[i]
-				batchId := getItemFromFileName(filenames[i])
-				info := allItemsInfo[batchId]
-				// TODO Add fileDetails in table
-				//fileDetails := fmt.Sprintf("sumEnergyQuantity:%d;sumFractions=%d;sumNumberOfMeteringPoints=%d", info.sumEnergyQuantity, info.sumFractions, info.sumNumberOfMeteringPoints)
+				strId := getItemFromFileName(filenames[i])
+				info := allItemsInfo[strId]
+				fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", info.transactionIdCountActual, info.transactionIdCountHist, int(info.sumActualReadingValues))
 
 				if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
-					_, err = sqlstmtTimeSeriesFound.Exec(run.MigrationRunId, fromTimeFormatted, toTimeFormatted, "Y", filename, info.meteringPointId)
+					_, err = sqlstmtTimeSeriesFound.Exec(run.MigrationRunId, fromTimeFormatted, toTimeFormatted, "Y", filename, fileDetails, info.meteringPointId)
 					if err != nil {
 						log.Error(err)
 						return false, err
@@ -287,8 +287,11 @@ func TimeSeriesWorker(sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtN
 
 				if config.GetScheduledRunFromMigrationTable() {
 					if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
+						filename := "N/A"
+						fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d",0, 0,0)
+
 						//Run the prepared SQL query that inserts to the progress table
-						_, err := sqlstmtNoTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "N", itemId)
+						_, err := sqlstmtNoTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "N", filename, fileDetails, itemId)
 						if err != nil {
 							log.Error(err)
 							return nil, err
@@ -369,18 +372,10 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	}
 
 	meteringPointData.MasterData = masterData
-
 	var timeSeriesList []models.TimeSeriesData
 
 	data.MeteringPointData = meteringPointData
 	data.TimeSeries = timeSeriesList
-
-	//processedFromTime := "'to_date('31.03.2016 22:00', 'DD.MM.YYYY HH24:MI')"
-	//processedUntilTime := "to_date('31.12.2017 23:00', 'DD.MM.YYYY HH24:MI')"
-	//Run the prepared SQL query that retrieves the time series
-
-	//processedFromTime := time.Date(2016, 03, 31, 22, 0, 0, 0, time.UTC)
-	//processedUntilTime := time.Date(2017, 12, 31, 23, 0, 0, 0, time.UTC)
 
 	rows, err := sqlstmtSelectTimeSeries.Query(meteringPointId, processedFromTime, processedUntilTime)
 	if err != nil {
@@ -402,6 +397,12 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	var quantity float64
 	var quality string
 	var readingTime NullTime
+
+	transactionIdCountActual := map[string]int{}
+	transactionIdCountHist := map[string]int{}
+	var sumActualReadingValues float64
+	sumActualReadingValues = 0.0
+
 	//var readingTimeFormatted string
 	prevValidFromDateFormatted = ""
 
@@ -438,11 +439,6 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			log.Error(err)
 			return data, nil, err
 		}
-		//readingTimeFormatted, err = formatDate(PST, readingTime)
-		//if err != nil {
-		//	log.Error(err)
-		//	return timeSeriesList, nil, err
-		//}
 
 		if prevValidFromDateFormatted != validFromDateFormatted {
 			if prevValidFromDateFormatted != "" {
@@ -455,35 +451,49 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 
 		timeSeriesValue.Position = position
 		timeSeriesValue.Quantity = quantity
+
+		sumActualReadingValues   += quantity
 		timeSeriesValue.Quality = quality
 
 		transactionIdStr = formatNullString(transactionId)
+
 
 		timeSeriesData.TransactionId = transactionIdStr
 		timeSeriesData.ValidFromDate = validFromDateFormatted
 		timeSeriesData.ValidToDate = validToDateFormatted
 		timeSeriesData.TransactionInsertDate = transactionInsertDateFormatted
 		timeSeriesData.HistoricalFlag = historicalFlag
+
+		if historicalFlag == "N" {
+			_, ok := transactionIdCountActual[transactionIdStr]
+			if !ok {
+				transactionIdCountActual[transactionIdStr] = 1
+			}
+		} else {
+			_, ok := transactionIdCountHist [transactionIdStr]
+			if !ok {
+				transactionIdCountHist [transactionIdStr] = 1
+			}
+		}
+
+
 		timeSeriesData.Resolution = resolution
 		timeSeriesData.Unit = unit
-/*
-		if position == 1 && len(timeSerieValues) > 0 {
-			timeSeriesData.TimeSeriesValues = timeSerieValues
-			timeSerieValues = nil
-		}
-*/
 		timeSeriesValue.Position = position
 		timeSeriesValue.Quantity = quantity
 		timeSeriesValue.Quality = quality
 		timeSerieValues = append(timeSerieValues, timeSeriesValue)
 		prevValidFromDateFormatted = validFromDateFormatted
 	}
-	timeSeriesData.TimeSeriesValues = timeSerieValues
-	timeSeriesList = append(timeSeriesList, timeSeriesData)
-	data.TimeSeries = timeSeriesList
+
+	if timeSerieValues != nil {
+		timeSeriesData.TimeSeriesValues = timeSerieValues
+		timeSeriesList = append(timeSeriesList, timeSeriesData)
+		data.TimeSeries = timeSeriesList
+	}
 
 	if len(timeSeriesList) > 0 {
-		metaInfo := metaInfo{meteringPointId}
+		metaInfo := metaInfo{meteringPointId : meteringPointId, transactionIdCountActual  : len(transactionIdCountActual), transactionIdCountHist   : len(transactionIdCountHist ), sumActualReadingValues   :sumActualReadingValues   }
 		return data, &metaInfo, err
 	} else {
 		return data, nil, err
@@ -707,12 +717,7 @@ func getItemFromFileName(fileName string) string {
 
 			i := strings.Index(tmpstr, "_")
 			if i > -1 {
-				tmpstr = tmpstr[i+1:]
-
-				i := strings.Index(tmpstr, "_")
-				if i > -1 {
-					name = tmpstr[:i]
-				}
+				name = tmpstr[:i]
 			}
 		}
 	}
@@ -744,9 +749,9 @@ type NullFloat struct {
 
 type metaInfo struct {
 	meteringPointId       string
-	//sumEnergyQuantity         uint64
-	//sumFractions              uint64
-	//sumNumberOfMeteringPoints uint64
+	transactionIdCountActual int
+	transactionIdCountHist int
+	sumActualReadingValues  float64
 }
 
 type result struct {
