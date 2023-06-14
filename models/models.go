@@ -43,7 +43,7 @@ type TimeSeriesData struct {
 	Resolution            string            `json:"resolution"`
 	Unit                  string            `json:"unit"`
 	Status                int               `json:"status,omitempty"`
-	ReadReason            string            `json:"read_reason,omitempty"`
+	ReadReason            string            `json:"read_reason"`
 	TimeSeriesValues      []TimeSeriesValue `json:"values,omitempty"`
 }
 

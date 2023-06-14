@@ -172,8 +172,8 @@ SELECT -- values of periodic (monthly) time series in IS Change
    pv.historical_flag,
    pv.amount AS quantity,
    pv.data_origin,
-   decode(pv.CANCELLED, 1, 6, 2) AS serie_status,
-   null as read_reason
+   2 AS serie_status,
+   decode(pv.CANCELLED, 1, 'CAN', '') AS read_reason
 FROM periodic_value pv) v
  JOIN METERING_POINT m ON m.mpoint_seqno = v.mpoint_seqno
  `
@@ -263,4 +263,29 @@ func GetSQLSelectNewRuns() string {
 			AND EXISTS (SELECT 1 FROM DMDH3_OWN.DATAMIGRATION_DOMAIN d WHERE MANAGED_BY_TIBCO = '0' and d.MIGRATION_DOMAIN = e.MIGRATION_DOMAIN)
 			order by THREADS, PERIOD_FROM_DATE
 			) where rownum <= 1`
+}
+
+// GetDataMigrationExportedPeriod returns the SQL statement used to find scheduled runs
+// Get the period that has been migrated successfully for the given data domain.
+// Only full periods are selected. That means if one migration run partially succeeded, the PERIOD_TO_DATE of the migration domain is not updated by that run
+// This means that for individual metering points the DATAMIGRATION_EXPORT_PROGRESS the period based on EXPORTED_FROM_DATE/EXPORTED_TO_DATE can differ. This will be handled in the export function below.
+func GetDataMigrationExportedPeriod() string {
+
+	return `
+    SELECT MIN(PERIOD_FROM_DATE) as MaxFromDate, MAX(PERIOD_TO_DATE) as MaxToDate
+	FROM DMDH3_OWN.DATAMIGRATION_EXPORT
+    where MIGRATION_DOMAIN = 'TimeSeries'
+	and MIGRATION_STATUS   = 'FIN'
+`
+}
+
+// GetDataMigrationExportedPeriodForMp returns the period that has been migrated successfully for the given data domain and metering_point.
+// Only successfully finished periods are selected. That means if a migration run failed, the PERIOD_TO_DATE of that migration will not be used (to allow retry for the export for this  period)
+func GetDataMigrationExportedPeriodForMp(meterpointId string) string {
+
+	return "SELECT MAX(EXPORTED_TO_DATE) as EXPORTED_TO_DATE " +
+	" FROM  DMDH3_OWN.DATAMIGRATION_EXPORT_PROGRESS" +
+	" where MIGRATION_DOMAIN = 'TimeSeries' " +
+	" and   METERING_POINT_ID = '" + meterpointId + "'" +
+	" and EXPORT_STATUS   = 'FIN'"
 }

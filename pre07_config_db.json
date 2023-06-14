@@ -1,0 +1,14 @@
+{
+  "DB_USERNAME":    "cgi_kjell_kaland",
+  "DB_PASSWORD":    "****",
+  "DB_ALIAS":       "ORAPRE07",
+  "DB_SID":         "ORAPRE07",
+  "DB_PORT":        1537,
+  "DB_HOST":        "hubpreora14",
+  "LOG_USERNAME":   "cgi_kjell_kaland",
+  "LOG_PASSWORD":   "***",
+  "LOG_ALIAS":      "ORAPRE07",
+  "LOG_SID":        "ORAPRE07",
+  "LOG_PORT":       1537,
+  "LOG_HOST":       "hubpreora14"
+}
