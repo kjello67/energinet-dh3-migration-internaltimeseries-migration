@@ -29,8 +29,8 @@ type MeteringPointData struct {
 type Masterdata struct {
 	GridArea            string  `json:"grid_area,omitempty"`
 	TypeOfMP            string  `json:"type_of_mp,omitempty"`
-	MasterDataStartDate string  `json:"masterdata_start_date,omitempty"`
-	MasterDataEndDate   string  `json:"masterdata_end_date,omitempty"`
+	MasterDataStartDate string  `json:"masterdata_start_date"`
+	MasterDataEndDate   string  `json:"masterdata_end_date"`
 }
 
 //TimeSeriesData defines the top level node used in our json files
@@ -50,6 +50,6 @@ type TimeSeriesData struct {
 //TimeSeriesValue defines the low level nodes used in our json files
 type TimeSeriesValue struct {
 	Position        int     `json:"position"`
-	Quantity        float64 `json:"quantity,omitempty"`
-	Quality         string  `json:"quality,omitempty"`
+	Quantity        float64 `json:"quantity"`
+	Quality         string  `json:"quality"`
 }

@@ -93,7 +93,7 @@ func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation 
 		wg.Add(1)
 		go func() {
 			//Create a worker
-			metaInfo, err := TimeSeriesWorker(db, sqlstmtSelectMasterData, sqlstmtSelectTimesSeries, sqlstmtNoTimeSeriesFound, meteringPoints, fromTimeFormatted, toTimeFormatted, fileLocation, run.MigrationRunId, skipDBUpdate)
+			metaInfo, err := TimeSeriesWorker(db, sqlstmtSelectMasterData, sqlstmtSelectTimesSeries, sqlstmtNoTimeSeriesFound, meteringPoints, run.PeriodToDate, fromTimeFormatted, toTimeFormatted, fileLocation, run.MigrationRunId, skipDBUpdate)
 
 			res := result{metaInfo: nil, mainErr: nil, returnValue: true}
 			if err != nil {
@@ -232,7 +232,8 @@ func GetMeteringPoints(db *sql.DB, meteringPoints chan<- []string, nWorkload int
 }
 
 //TimeSeriesWorker reads the metering points channel and writes the time series for each metering point in a separate json file
-func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtNoTimeSeriesFound *sql.Stmt, items <-chan []string, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool) (map[string]metaInfo, error) {
+func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries,
+	sqlstmtNoTimeSeriesFound *sql.Stmt, items <-chan []string, runTo time.Time, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool) (map[string]metaInfo, error) {
 
 	timer := time.Now()
 	timeSeriesInfo := map[string]metaInfo{}
@@ -245,7 +246,7 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 		for _, itemId := range itemSlice {
 
 			//The list of time series that will be written to the file
-			data, metaInfo, err := getTimeSeriesList(itemId, fromTime, toTime,  db, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries)
+			data, metaInfo, err := getTimeSeriesList(itemId, fromTime, toTime, runTo, db, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries)
 
 			if metaInfo != nil {
 				timeSeriesInfo[itemId] = *metaInfo
@@ -352,13 +353,13 @@ func getMasterData(meteringPointId string, sqlstmtSelectMasterData *sql.Stmt, PS
 }
 
 // checkDataMigrationExportedPeriod
-func findDataMigrationExportedPeriod(meteringPointId string, periodFromDate time.Time, db *sql.DB) (time.Time, error) {
+func findDataMigrationExportedPeriod(meteringPointId string, periodFromDate, periodToDate time.Time, db *sql.DB) (time.Time, bool, error) {
 	//Prepare the SQL query that inserts to the progress table
-
+	migrate := true
 	rows, err := db.Query(sqls.GetDataMigrationExportedPeriodForMp(meteringPointId))
 	if err != nil {
 		log.Error(err)
-		return periodFromDate, err
+		return periodFromDate, false, err
 	}
 	defer rows.Close()
 
@@ -370,27 +371,30 @@ func findDataMigrationExportedPeriod(meteringPointId string, periodFromDate time
 		//Store the values from the current line in the result to local variables
 		err = rows.Scan(&exportedToDate)
 		if err != nil{
-			return periodFromDate, err
+			return periodFromDate, false, err
 		}
 
 		if exportedToDate.Valid {
-			if exportedToDate.Time.Before(periodFromDate) {
-				if exportedToDate.Time.Before(time.Date(2000,  12, 31, 23, 0, 0, 0, time.UTC)) {
-					periodFromDate = time.Date(2000,  12, 31, 23, 0, 0, 0, time.UTC)
-				} else {
-					periodFromDate = exportedToDate.Time
+			if exportedToDate.Time.Before(periodToDate) {
+				if exportedToDate.Time.Before(periodFromDate) {
+					if exportedToDate.Time.UTC().Before(time.Date(2000,  12, 31, 23, 0, 0, 0, time.UTC)) {
+						periodFromDate = time.Date(2000,  12, 31, 23, 0, 0, 0, time.UTC)
+					} else {
+						periodFromDate = exportedToDate.Time
+					}
 				}
-				err = nil
+			} else {
+				migrate = false
 			}
 		}
 	}
 
-	return periodFromDate, err
+	return periodFromDate, migrate, err
 
 }
 
 
-func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntilTime time.Time,  db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries *sql.Stmt) (models.Data, *metaInfo, error) {
+func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntilTime, runTo time.Time,  db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries *sql.Stmt) (models.Data, *metaInfo, error) {
 	//The list of time series that will be written to the file
 	var meteringPointData models.MeteringPointData
 	meteringPointData.MeteringPointId = meteringPointId
@@ -416,9 +420,14 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	data.MeteringPointData = meteringPointData
 	data.TimeSeries = timeSeriesList
 
-	processedFromTime, err = findDataMigrationExportedPeriod(meteringPointId, processedFromTime, db)
+	processedFromTime, migrate, err := findDataMigrationExportedPeriod(meteringPointId, processedFromTime, runTo, db)
 	if err != nil {
 		log.Error(err)
+		return data, nil, err
+	}
+
+	if ( !migrate ) {
+		log.Info("Skipping meteringpoint " + meteringPointId + " as it has already been migrated for the the period")
 		return data, nil, err
 	}
 
@@ -637,13 +646,13 @@ func checkDataMigrationExportedPeriod(periodFromDate time.Time, migrationRunId i
 		}
 
 		if maxToDate.Valid {
-			if maxToDate.Time == periodFromDate {
-				err = nil
-			} else {
+			if periodFromDate.After(maxToDate.Time) {
 				errorText := "Cannot start migration run " + strconv.Itoa(migrationRunId) + ",  Start date " +  periodFromDate.UTC().Format(config.GetJSONDateLayoutLong()) +
-					" is not the same as the last end date " +  maxToDate.Time.UTC().Format(config.GetJSONDateLayoutLong())
+					" is after the last end date " +  maxToDate.Time.UTC().Format(config.GetJSONDateLayoutLong())
 				err = errors.New(errorText)
 				log.Error(errorText + " - migration run aborted")
+			} else {
+				err = nil
 			}
 		} else  {
 			// First Run, any date is OK

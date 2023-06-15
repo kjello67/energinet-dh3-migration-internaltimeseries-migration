@@ -88,6 +88,15 @@
 			  "maxLength": 5,
 			  "enum": ["KWH","MWH","MVARH","KVARH","KW"]
             },
+			"status": {
+			  "type": "integer",
+			  "enum": [2, 9]
+			},
+            "read_reason": {
+              "type": "string",
+			  "maxLength": 3,
+			  "enum": ["CAN",""]
+            },
             "values": {
               "type": "array",
 			  "maxItems": 1000000,
@@ -125,6 +134,8 @@
             "historical_flag",
             "resolution",
             "unit",
+            "status",
+            "read_reason",
             "values"
           ]
         }
