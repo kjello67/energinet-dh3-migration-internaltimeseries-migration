@@ -441,8 +441,8 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	//Variables to hold the time series
 	var timeSeriesData models.TimeSeriesData
 	var timeSerieValues []models.TimeSeriesValue
-	var transactionId, readReason NullString
-	var transactionIdStr, readReasonStr string
+	var transactionId, messageId, readReason NullString
+	var transactionIdStr, messageIdStr, readReasonStr string
 	var historicalFlag, resolution, unit string
 	var validFromDate, validToDate, transactionInsertDate NullTime
 	var validFromDateFormatted, prevValidFromDateFormatted, validToDateFormatted, transactionInsertDateFormatted string
@@ -467,6 +467,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		rows.Scan(
 			&meteringPointId,
 			&transactionId,
+			&messageId,
 			&validFromDate,
 			&validToDate,
 			&transactionInsertDate,
@@ -512,9 +513,11 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		timeSeriesValue.Quality = quality
 
 		transactionIdStr = formatNullString(transactionId)
+		messageIdStr = formatNullString(messageId)
 		readReasonStr = formatNullString(readReason)
 
 		timeSeriesData.TransactionId = transactionIdStr
+		timeSeriesData.MessageId = messageIdStr
 		timeSeriesData.ValidFromDate = validFromDateFormatted
 		timeSeriesData.ValidToDate = validToDateFormatted
 		timeSeriesData.TransactionInsertDate = transactionInsertDateFormatted

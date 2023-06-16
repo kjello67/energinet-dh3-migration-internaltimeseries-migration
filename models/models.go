@@ -36,6 +36,7 @@ type Masterdata struct {
 //TimeSeriesData defines the top level node used in our json files
 type TimeSeriesData struct {
 	TransactionId         string            `json:"transaction_id"`
+	MessageId             string            `json:"message_id"`
 	ValidFromDate         string            `json:"valid_from_date"`
 	ValidToDate           string            `json:"valid_to_date"`
 	TransactionInsertDate string            `json:"transaction_insert_date"`

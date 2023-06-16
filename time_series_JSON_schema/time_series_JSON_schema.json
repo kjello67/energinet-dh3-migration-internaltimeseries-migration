@@ -61,6 +61,12 @@
 			    "null"
 		      ]
             },
+            "message_id": {
+              "type": [
+			    "string",
+			    "null"
+		      ]
+            },
             "valid_from_date": {
               "type": "string",
 			  "format": "date-time" 
@@ -128,6 +134,7 @@
           },
           "required": [
             "transaction_id",
+            "message_id",
             "valid_from_date",
             "valid_to_date",
             "transaction_insert_date",

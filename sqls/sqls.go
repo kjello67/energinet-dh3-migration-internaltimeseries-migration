@@ -62,6 +62,7 @@ periodic_value AS -- the periodical volumes (monthly) stored as "time series" in
    pt.UNIT,
    pt.SERIES_TIMESTAMP,
    r.TRANSREF,
+   m.meldingsref as meldingsref,
    nvl2(pt.HIST_TIMESTAMP, 'Y', 'N') AS historical_flag,
    round(MONTHS_BETWEEN(pv.READING_START_DATE, pt.START_DATE) + 1, 0) AS position,
    pv.READING_START_DATE,
@@ -73,6 +74,7 @@ periodic_value AS -- the periodical volumes (monthly) stored as "time series" in
    JOIN CHANGE.S_PERIODIC_TIMESERIES pt ON pt.UTVEKSLINGSOBJEKTNR = m.MPOINT_SEQNO /* short-cut, but will always be equal for Energinet */
    LEFT JOIN CHANGE.S_RECIPIENT r ON r.MELDINGSNR_DATA = to_number(pt.sender_ref default 0 on conversion error) AND r.MELDINGSNR_DATA > 0 AND r.DATA_KILDE = 'S'
    JOIN CHANGE.S_PERIODIC_SERIES_VALUE pv ON pv.PERIODIC_TIMESERIES_SEQNO = pt.PERIODIC_TIMESERIES_SEQNO
+   JOIN CHANGE.S_MELDING m ON m.meldingsnr = r.meldingsnr
  WHERE
    pt.SERIES_TIMESTAMP > p.processed_from_time - 1/24/60/60 AND 
    pt.SERIES_TIMESTAMP < p.processed_until_time),
@@ -88,7 +90,7 @@ series AS -- time series for the selected metering points
    s.UNIT,
    s.SERIE_TIMESTAMP,
    r.TRANSREF,
-   b.IMPORT_BATCH_ID,
+   b.IMPORT_BATCH_ID as meldingsref,
    s.serie_status as serie_status, 
    s.read_reason as read_reason
  FROM param p,
@@ -125,6 +127,7 @@ historical_value AS -- historical values for each of the time series
 SELECT -- Main select
    m.metering_point_id,
    v.transref AS transaction_id,
+   v.meldingsref,
    v.valid_from_date,
    v.valid_to_date,
    v.inserted_timestamp,
@@ -146,6 +149,7 @@ from
    to_char(s.RESOLUTION) AS resolution,
    s.SERIE_TIMESTAMP AS inserted_timestamp,
    s.TRANSREF,
+   s.meldingsref,
    CASE 
     WHEN s.RESOLUTION IN (15, 60)
       THEN round((sv.READING_TIME - s.MIN_READING_TIME) * 24 * 60 / s.RESOLUTION + 1)
@@ -167,6 +171,7 @@ SELECT -- values of periodic (monthly) time series in IS Change
    pv.resolution,
    pv.series_timestamp AS inserted_timestamp,
    pv.transref,
+   pv.meldingsref,
    pv.POSITION,
    pv.READING_START_DATE AS reading_time,
    pv.historical_flag,
