@@ -265,7 +265,6 @@ func GetSQLSelectNewRuns() string {
             and e.MIGRATION_DOMAIN = 'TimeSeries'
 			and MIGRATION_DUE_DATE < sys_extract_utc(systimestamp)
 			and not exists (select 1 from DMDH3_OWN.DATAMIGRATION_EXPORT de where de.MIGRATION_DOMAIN = e.MIGRATION_DOMAIN and de.MIGRATION_STATUS = 'RUN')
-			AND EXISTS (SELECT 1 FROM DMDH3_OWN.DATAMIGRATION_DOMAIN d WHERE MANAGED_BY_TIBCO = '0' and d.MIGRATION_DOMAIN = e.MIGRATION_DOMAIN)
 			order by THREADS, PERIOD_FROM_DATE
 			) where rownum <= 1`
 }
