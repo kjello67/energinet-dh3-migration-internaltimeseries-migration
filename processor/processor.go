@@ -408,6 +408,12 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		return data, nil, err
 	}
 
+	UTC, err := time.LoadLocation("UTC")
+	if err != nil {
+		log.Error(err)
+		return data, nil, err
+	}
+
 	masterData, err = getMasterData(meteringPointId, sqlstmtSelectMasterData, PST)
 	if err != nil {
 		log.Error(err)
@@ -426,7 +432,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		return data, nil, err
 	}
 
-	if ( !migrate ) {
+	if !migrate {
 		log.Info("Skipping meteringpoint " + meteringPointId + " as it has already been migrated for the the period")
 		return data, nil, err
 	}
@@ -491,7 +497,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			log.Error(err)
 			return data, nil, err
 		}
-		transactionInsertDateFormatted, err = formatDate(PST, transactionInsertDate)
+		transactionInsertDateFormatted, err = formatDate(UTC, transactionInsertDate)
 		if err != nil {
 			log.Error(err)
 			return data, nil, err
