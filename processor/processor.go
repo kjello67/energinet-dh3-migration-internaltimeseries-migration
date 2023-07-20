@@ -448,7 +448,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	var transactionIdStr, messageIdStr, readReasonStr string
 	var historicalFlag, resolution, unit string
 	var validFromDate, validToDate, transactionInsertDate NullTime
-	var validFromDateFormatted, prevValidFromDateFormatted, validToDateFormatted, transactionInsertDateFormatted string
+	var validFromDateFormatted, validToDateFormatted, transactionInsertDateFormatted string
 	var timeSeriesValue models.TimeSeriesValue
 	var position, serieStatus int
 	var quantity float64
@@ -459,9 +459,6 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	transactionIdCountHist := map[string]int{}
 	var sumActualReadingValues float64
 	sumActualReadingValues = 0.0
-
-	//var readingTimeFormatted string
-	prevValidFromDateFormatted = ""
 
 	//Loop through the result from the executed SQL query
 	for rows.Next() {
@@ -500,13 +497,11 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			return data, nil, err
 		}
 
-		if prevValidFromDateFormatted != validFromDateFormatted {
-			if prevValidFromDateFormatted != "" {
-				timeSeriesData.TimeSeriesValues = timeSerieValues
-				timeSerieValues = nil
+		if timeSeriesValue.Position > position {
+			timeSeriesData.TimeSeriesValues = timeSerieValues
+			timeSerieValues = nil
 
-				timeSeriesList = append(timeSeriesList, timeSeriesData)
-			}
+			timeSeriesList = append(timeSeriesList, timeSeriesData)
 		}
 
 		timeSeriesValue.Position = position
@@ -546,7 +541,6 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		timeSeriesValue.Quantity = quantity
 		timeSeriesValue.Quality = quality
 		timeSerieValues = append(timeSerieValues, timeSeriesValue)
-		prevValidFromDateFormatted = validFromDateFormatted
 	}
 
 	if timeSerieValues != nil {
