@@ -183,7 +183,7 @@ FROM periodic_value pv) v
  JOIN METERING_POINT m ON m.mpoint_seqno = v.mpoint_seqno
  `
 	//Set the order of the SQL statement
-	sqlOrder := `   ORDER BY metering_point_id, valid_from_date asc, historical_flag,  position asc`
+	sqlOrder := `   ORDER BY metering_point_id, valid_from_date asc, historical_flag, meldingsref, position asc`
 
 	return sql + sqlOrder
 }
