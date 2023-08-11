@@ -53,22 +53,22 @@ func main() {
 
 		//Check if there is a scheduled run
 		var scheduledRun *models.ScheduledRun
-		if config.GetScheduledRunFromMigrationTable() {
+		if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
 			scheduledRun, migrationRunId, err = processor.SchedulerWorker(db)
 			if err != nil {
 				log.Fatal(err)
 			}
-		} /*else {
-			migrationRunId = 106
+		} else {
+			migrationRunId = 109
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
 			scheduledRun.Threads = 1
-			scheduledRun.Parameter = "DEV02"
-			scheduledRun.PeriodFromDate = time.Date(2018, 12, 31, 23, 0, 0, 0, time.UTC)
-			scheduledRun.PeriodToDate = time.Date(2021, 12, 31, 23, 0, 0, 0, time.UTC)
+			scheduledRun.Parameter = "PRE07"
+			scheduledRun.PeriodFromDate = time.Date(2021, 12, 31, 23, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodToDate = time.Date(2023, 6, 11, 22, 0, 0, 0, time.UTC)
 		}
-*/
+
 		//By default, data should be retrieved from same database as logging is done
 		logDb := db
 		if dbConnectionString != logConnectionString {
@@ -95,12 +95,6 @@ func main() {
 			var nWorkload = flag.Int("workload", 1, "Sets the number of items each worker will process per database request. Default value is 5")
 			var fileLocation = flag.String("location", configurations.FILE_LOCATION, "Where to store the exported JSON logFile")
 			flag.Parse()
-
-			log.Debug("nWorkers = ", *nWorkers)
-			log.Debug("sqlFlag = ", *sqlFlag)
-			log.Debug("sqlItemCount = ", *sqlItemCount)
-			log.Debug("sqlItemIds = ", *sqlItemIds)
-			log.Debug("fileLocation = ", *fileLocation)
 
 			//Update the status to running
 			if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {

@@ -1,5 +1,5 @@
 {
-  "FILE_LOCATION":   "./out/DEV02",
+  "FILE_LOCATION":   "H:/out/DEV02",
   "SQL_ITEM_COUNT":  "select count(distinct(objectid)) from reading.m_meterpoint where objectid in ('575165230714233855','570500000000000065', '571300004456302581', '571300298509622249', '573521679180266789')",
   "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where objectid in ('575165230714233855','570500000000000065', '571300004456302581', '571300298509622249', '573521679180266789')",
   "DEBUG_LOGGING":   true
