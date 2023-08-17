@@ -91,6 +91,7 @@ series AS -- time series for the selected metering points
    s.SERIE_TIMESTAMP,
    r.TRANSREF,
    b.IMPORT_BATCH_ID as meldingsref,
+   b.batch_type,
    s.serie_status as serie_status, 
    s.read_reason as read_reason
  FROM param p,
@@ -103,7 +104,21 @@ series AS -- time series for the selected metering points
    s.SERIE_TIMESTAMP > p.processed_from_time - 1/24/60/60 AND 
    s.SERIE_TIMESTAMP < p.processed_until_time AND
    -- is there a better way to exclude these?
-   not (s.RESOLUTION = 60 and s.SENDER_REF like 'Calculated from 15 min values') AND
+   --not (s.RESOLUTION = 60 and s.SENDER_REF like 'Calculated from 15 min values') AND
+   -- Exclude roll up on resolution (replacing check on the sender_ref text above)
+   b.BATCH_TYPE <> 'RR' AND
+   -- Exclude time series that is both a roll up and a remainder from replacements 
+   NOT EXISTS (
+     SELECT 1 
+     FROM reading.m_counter c2 
+       JOIN reading.m_import_serie s2 ON s2.counter_seqno = c2.counter_seqno 
+     WHERE 
+       b.batch_type = 'RT' AND 
+       c2.mpoint_seqno = c.mpoint_seqno AND 
+       s2.min_reading_time < s.max_reading_time AND 
+       s2.max_reading_time > s.min_reading_time AND
+       s2.serie_status = 2 and
+       s2.resolution < s.resolution) and
    -- what is the purpose of this one?
    b.BATCH_TYPE <> 'CA'),
 series_value AS -- values for each of the time series (active)
