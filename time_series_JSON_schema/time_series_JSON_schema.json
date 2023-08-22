@@ -92,7 +92,7 @@
             "unit": {
               "type": "string",
 			  "maxLength": 5,
-			  "enum": ["KWH","MWH","MVARH","KVARH","KW"]
+			  "enum": ["KWH","MWH","MVARH","KVARH","KW","T"]
             },
 			"status": {
 			  "type": "integer",
