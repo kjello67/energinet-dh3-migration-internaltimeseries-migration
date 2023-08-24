@@ -245,7 +245,7 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 			//The list of time series that will be written to the file
 			data, metaInfo, migrate, err := getTimeSeriesList(itemId, fromTime, toTime, runTo, db, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries)
 
-			if  migrate {
+			if migrate {
 				if metaInfo != nil {
 					timeSeriesInfo[itemId] = *metaInfo
 				}
@@ -523,14 +523,14 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		timeSeriesData.HistoricalFlag = historicalFlag
 
 		if historicalFlag == "N" {
-			_, ok := transactionIdCountActual[transactionIdStr]
+			_, ok := transactionIdCountActual[transactionIdStr+transactionInsertDateFormatted]
 			if !ok {
-				transactionIdCountActual[transactionIdStr] = 1
+				transactionIdCountActual[transactionIdStr+transactionInsertDateFormatted] = 1
 			}
 		} else {
-			_, ok := transactionIdCountHist[transactionIdStr]
+			_, ok := transactionIdCountHist[transactionIdStr+transactionInsertDateFormatted]
 			if !ok {
-				transactionIdCountHist[transactionIdStr] = 1
+				transactionIdCountHist[transactionIdStr+transactionInsertDateFormatted] = 1
 			}
 		}
 
