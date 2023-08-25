@@ -312,7 +312,8 @@ func getMasterData(meteringPointId string, sqlstmtSelectMasterData *sql.Stmt, PS
 
 	var masterDataRows []models.Masterdata
 	var masterDataRow models.Masterdata
-	var gridArea, typeOfMP, validFromDateFormatted, validToDateFormatted string
+	var gridArea, typeOfMP, validFromDateFormatted string
+	var validToDateFormatted *string
 	var validFromDate, validToDate NullTime
 
 	//Run the prepared SQL query that retrieves the time series
@@ -335,7 +336,7 @@ func getMasterData(meteringPointId string, sqlstmtSelectMasterData *sql.Stmt, PS
 			log.Error(err)
 			return masterDataRows, err
 		}
-		validToDateFormatted, err = formatDate(PST, validToDate, "")
+		validToDateFormatted, err = formatDatePointer(PST, validToDate)
 		if err != nil {
 			log.Error(err)
 			return masterDataRows, err
@@ -615,19 +616,19 @@ func formatDate(PST *time.Location, nullTime NullTime, resolution string) (strin
 	return dateFormatted, nil
 }
 
-func formatDate2(PST *time.Location, migrationRunId int, nullTime NullTime) (string, error) {
+func formatDatePointer(PST *time.Location, nullTime NullTime) (*string, error) {
 	//Format the dates to ISO 8601 (RFC-3339)
-	var dateFormatted string
+	var dateFormatted *string
 	if nullTime.Valid {
-		dateFormatted = nullTime.Time.Format(config.GetFileDateLayout())
-		t, err := time.ParseInLocation(config.GetFileDateLayout(), dateFormatted, PST)
+		*dateFormatted = nullTime.Time.Format(config.GetJSONDateLayoutLong())
+		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), *dateFormatted, PST)
 		if err != nil {
 			log.Error(err)
-			return "", err
+			return nil, err
 		}
-		dateFormatted = t.UTC().Format(config.GetFileDateLayout())
+		*dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
 	} else {
-		dateFormatted = ""
+		dateFormatted = nil
 	}
 	return dateFormatted, nil
 }
