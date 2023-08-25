@@ -25,7 +25,6 @@ WHERE
 	return sql
 }
 
-
 //GetSQLSelectData returns the SQL statement used to retrieve the timeseries data
 func GetSQLSelectData() string {
 
@@ -198,7 +197,7 @@ FROM periodic_value pv) v
  JOIN METERING_POINT m ON m.mpoint_seqno = v.mpoint_seqno
  `
 	//Set the order of the SQL statement
-	sqlOrder := `   ORDER BY metering_point_id, valid_from_date asc, historical_flag, meldingsref, position asc`
+	sqlOrder := `   ORDER BY metering_point_id, valid_from_date, INSERTED_TIMESTAMP, historical_flag, meldingsref, position asc`
 
 	return sql + sqlOrder
 }
@@ -303,8 +302,8 @@ func GetDataMigrationExportedPeriod() string {
 func GetDataMigrationExportedPeriodForMp(meterpointId string) string {
 
 	return "SELECT MAX(EXPORTED_TO_DATE) as EXPORTED_TO_DATE " +
-	" FROM  DMDH3_OWN.DATAMIGRATION_EXPORT_PROGRESS" +
-	" where MIGRATION_DOMAIN = 'TimeSeries' " +
-	" and   METERING_POINT_ID = '" + meterpointId + "'" +
-	" and EXPORT_STATUS   = 'FIN'"
+		" FROM  DMDH3_OWN.DATAMIGRATION_EXPORT_PROGRESS" +
+		" where MIGRATION_DOMAIN = 'TimeSeries' " +
+		" and   METERING_POINT_ID = '" + meterpointId + "'" +
+		" and EXPORT_STATUS   = 'FIN'"
 }
