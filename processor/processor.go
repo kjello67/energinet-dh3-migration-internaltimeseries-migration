@@ -499,7 +499,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			return data, nil, true, err
 		}
 
-		if timeSeriesValue.Position > position {
+		if timeSeriesValue.Position > position || (timeSeriesData.HistoricalFlag != "" && timeSeriesData.HistoricalFlag != historicalFlag) {
 			timeSeriesData.TimeSeriesValues = timeSerieValues
 			timeSerieValues = nil
 
