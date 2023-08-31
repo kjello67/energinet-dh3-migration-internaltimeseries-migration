@@ -618,19 +618,19 @@ func formatDate(PST *time.Location, nullTime NullTime, resolution string) (strin
 
 func formatDatePointer(PST *time.Location, nullTime NullTime) (*string, error) {
 	//Format the dates to ISO 8601 (RFC-3339)
-	var dateFormatted *string
+	var dateFormatted string
 	if nullTime.Valid {
-		*dateFormatted = nullTime.Time.Format(config.GetJSONDateLayoutLong())
-		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), *dateFormatted, PST)
+		dateFormatted = nullTime.Time.Format(config.GetJSONDateLayoutLong())
+		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), dateFormatted, PST)
 		if err != nil {
 			log.Error(err)
 			return nil, err
 		}
-		*dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
+		dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
+		return &dateFormatted, nil
 	} else {
-		dateFormatted = nil
+		return nil, nil
 	}
-	return dateFormatted, nil
 }
 
 // checkDataMigrationExportedPeriod
