@@ -26,6 +26,7 @@ type Configuration struct {
 	SQL_ITEM_ID    string
 	FROM_DATE      string
 	TO_DATE        string
+	RENAME_BULK    int
 }
 
 func GetConfig(params ...string) Configuration {

@@ -89,11 +89,15 @@ func main() {
 
 			//Setup input parameters from the configurations (some from the DB and some from the configuration file)
 			var nWorkers = flag.Int("workers", scheduledRun.Threads, "Sets the number of workers. Default value is 6.")
-			var sqlFlag = flag.Bool("sqlFlag", scheduledRun.UseListOfMPs, "A flag to decide whether or not the SQL in the configuration file is going to be used")
-			var sqlItemCount = flag.String("sqlItemCount", configurations.SQL_ITEM_COUNT, "The SQL to fetch the number of items to be migrated")
-			var sqlItemIds = flag.String("sqlItemIds", configurations.SQL_ITEM_ID, "The SQL to fetch the items to be migrated")
-			var nWorkload = flag.Int("workload", 1, "Sets the number of items each worker will process per database request. Default value is 5")
-			var fileLocation = flag.String("location", configurations.FILE_LOCATION, "Where to store the exported JSON logFile")
+			var sqlFlag = flag.Bool("sqlFlag", scheduledRun.UseListOfMPs, "A flag to decide whether or not the SQL in the configuration file is going to be used.")
+			var sqlItemCount = flag.String("sqlItemCount", configurations.SQL_ITEM_COUNT, "The SQL to fetch the number of items to be migrated.")
+			var sqlItemIds = flag.String("sqlItemIds", configurations.SQL_ITEM_ID, "The SQL to fetch the items to be migrated.")
+			var nWorkload = flag.Int("workload", 1, "Sets the number of items each worker will process per database request. Default value is 5.")
+			var fileLocation = flag.String("location", configurations.FILE_LOCATION, "Where to store the exported JSON logFile.")
+			var numberOfFilesToRename = flag.Int("numberOfFilesToRename", configurations.RENAME_BULK, "How many tmp files to rename to json at once. Default value is 1.")
+			if *numberOfFilesToRename == 0 {
+				*numberOfFilesToRename = 1
+			}
 			flag.Parse()
 
 			//Update the status to running
@@ -112,7 +116,7 @@ func main() {
 					errorMessage = err.Error()
 				} else {
 					//Call the function that will extract the grid area and write the time series to files in the json format
-					ok, err := processor.MigrateTimeSeries(*nWorkers, *nWorkload, db, logDb, *fileLocation, *sqlFlag, *sqlItemCount, *sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE)
+					ok, err := processor.MigrateTimeSeries(*nWorkers, *nWorkload, db, logDb, *fileLocation, *sqlFlag, *sqlItemCount, *sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE, numberOfFilesToRename)
 					if err != nil {
 						log.Error(err)
 						errorMessage = err.Error()
