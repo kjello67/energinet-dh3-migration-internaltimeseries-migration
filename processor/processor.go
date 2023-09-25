@@ -23,7 +23,7 @@ func logError(err error) (bool, error) {
 }
 
 // MigrateTimeSeries extracts metering points from the database and writes the time series to json files for migration to DHUB3
-func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation string, sqlFlag bool, sqlItemCount, sqlItemIds string, run *models.ScheduledRun, skipDBUpdate bool) (bool, error) {
+func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation string, sqlFlag bool, sqlItemCount, sqlItemIds string, run *models.ScheduledRun, skipDBUpdate bool, numberOfFilesToRename *int) (bool, error) {
 	var err error
 
 	fromTimeFormatted := run.PeriodFromDate.Format(config.GetExportDateLayout())
@@ -92,7 +92,7 @@ func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation 
 		wg.Add(1)
 		go func() {
 			//Create a worker
-			metaInfo, err := TimeSeriesWorker(db, sqlstmtSelectMasterData, sqlstmtSelectTimesSeries, sqlstmtNoTimeSeriesFound, meteringPoints, run.PeriodToDate, fromTimeFormatted, toTimeFormatted, fileLocation, run.MigrationRunId, skipDBUpdate)
+			metaInfo, err := TimeSeriesWorker(db, sqlstmtSelectMasterData, sqlstmtSelectTimesSeries, sqlstmtNoTimeSeriesFound, sqlstmtTimeSeriesFound, meteringPoints, run.PeriodToDate, fromTimeFormatted, toTimeFormatted, fileLocation, run.MigrationRunId, skipDBUpdate, numberOfFilesToRename)
 
 			res := result{metaInfo: nil, mainErr: nil, returnValue: true}
 			if err != nil {
@@ -231,8 +231,7 @@ func GetMeteringPoints(db *sql.DB, meteringPoints chan<- []string, nWorkload int
 }
 
 //TimeSeriesWorker reads the metering points channel and writes the time series for each metering point in a separate json file
-func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries,
-	sqlstmtNoTimeSeriesFound *sql.Stmt, items <-chan []string, runTo time.Time, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool) (map[string]metaInfo, error) {
+func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtNoTimeSeriesFound, sqlstmtTimeSeriesFound *sql.Stmt, items <-chan []string, runTo time.Time, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool, numberOfFilesToRename *int) (map[string]metaInfo, error) {
 
 	timer := time.Now()
 	timeSeriesInfo := map[string]metaInfo{}
@@ -240,6 +239,7 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 	toTime, _ := time.Parse(config.GetExportDateLayout(), toTimeFormatted)
 
 	//For each metering point read from the metering points channel
+	fileCounter := 0
 	for itemSlice := range items {
 		for _, itemId := range itemSlice {
 			//The list of time series that will be written to the file
@@ -280,6 +280,35 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 						log.Error(err)
 						return nil, err
 					}
+
+					fileCounter++
+					if fileCounter == *numberOfFilesToRename {
+						fileCounter = 0
+						//Rename .tmp to .json in the folder
+						filenames, err := renameFiles(fileLocation, config.GetTmpExtension(), config.GetFinalExtension())
+						if err == nil {
+							if config.GetScheduledRunFromMigrationTable() {
+								//Insert the filenames in the progress table
+								for i := 0; i < len(filenames); i++ {
+									//Run the prepared SQL query that inserts to the progress table
+									filename := filenames[i]
+									strId := getItemFromFileName(filename)
+									fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", timeSeriesInfo[strId].transactionIdCountActual, timeSeriesInfo[strId].transactionIdCountHist, int(timeSeriesInfo[strId].sumActualReadingValues))
+
+									if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
+										_, err = sqlstmtTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "Y", filename, fileDetails, timeSeriesInfo[strId].meteringPointId)
+										if err != nil {
+											log.Error(err)
+											return nil, err
+										}
+									}
+								}
+							}
+						} else {
+							return nil, err
+						}
+					}
+
 				} else {
 					//No time series found for MP
 					log.Debug("No time series found for meterpoint ", itemId)
@@ -618,19 +647,19 @@ func formatDate(PST *time.Location, nullTime NullTime, resolution string) (strin
 
 func formatDatePointer(PST *time.Location, nullTime NullTime) (*string, error) {
 	//Format the dates to ISO 8601 (RFC-3339)
-	var dateFormatted *string
+	var dateFormatted string
 	if nullTime.Valid {
-		*dateFormatted = nullTime.Time.Format(config.GetJSONDateLayoutLong())
-		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), *dateFormatted, PST)
+		dateFormatted = nullTime.Time.Format(config.GetJSONDateLayoutLong())
+		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), dateFormatted, PST)
 		if err != nil {
 			log.Error(err)
 			return nil, err
 		}
-		*dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
+		dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
+		return &dateFormatted, nil
 	} else {
-		dateFormatted = nil
+		return nil, nil
 	}
-	return dateFormatted, nil
 }
 
 // checkDataMigrationExportedPeriod
