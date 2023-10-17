@@ -1,14 +1,14 @@
 {
   "DB_USERNAME":    "cgi_kjell_kaland",
-  "DB_PASSWORD":    "20Lyntog2023_",
+  "DB_PASSWORD":    "20Lyntog2024_",
   "DB_ALIAS":       "ORADEV02",
   "DB_SID":         "ORADEV02",
   "DB_PORT":        1542,
-  "DB_HOST":        "10.47.250.23",
+  "DB_HOST":        "10.47.250.227",
   "LOG_USERNAME":   "cgi_kjell_kaland",
-  "LOG_PASSWORD":   "20Lyntog2023_",
+  "LOG_PASSWORD":   "20Lyntog2024_",
   "LOG_ALIAS":      "ORADEV02",
   "LOG_SID":        "ORADEV02",
   "LOG_PORT":       1542,
-  "LOG_HOST":       "10.47.250.23"
+  "LOG_HOST":       "10.47.250.227"
 }

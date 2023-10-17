@@ -38,8 +38,8 @@ func main() {
 	if !validatedOK {
 		return
 	}
-	var dbConnectionString = flag.String("logDb", connectionStringData, "Database connection string to the data server.")
-	var logConnectionString = flag.String("log", connectionStringLog, "Database connection string to the log server.")
+	var dbConnectionString = flag.String("log", connectionStringData, "Database connection string to the data server.")
+	var logConnectionString = flag.String("logDb", connectionStringLog, "Database connection string to the log server.")
 
 	//Open connection to the database from where the data should be retrieved
 	db, err := database.InitDB(*dbConnectionString)
@@ -48,8 +48,8 @@ func main() {
 		//Only log in file as the DB is not available
 		log.Fatal(err)
 	} else {
-		db.SetMaxIdleConns(config.GetMaxIdleConnections())
-		db.SetMaxOpenConns(config.GetMaxOpenConnections())
+		//db.SetMaxIdleConns(config.GetMaxIdleConnections())
+		//db.SetMaxOpenConns(config.GetMaxOpenConnections())
 
 		//Check if there is a scheduled run
 		var scheduledRun *models.ScheduledRun
@@ -63,10 +63,12 @@ func main() {
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
-			scheduledRun.Threads = 1
+			scheduledRun.Threads = 4
 			scheduledRun.Parameter = "PRE07"
-			scheduledRun.PeriodFromDate = time.Date(2021, 12, 31, 23, 0, 0, 0, time.UTC)
-			scheduledRun.PeriodToDate = time.Date(2023, 6, 11, 22, 0, 0, 0, time.UTC)
+//			scheduledRun.PeriodFromDate = time.Date(2017, 12, 31, 23, 0, 0, 0, time.UTC)
+//			scheduledRun.PeriodToDate = time.Date(2017, 12, 31, 23, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodFromDate = time.Date(2016, 12, 31, 23, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodToDate = time.Date(2017, 07, 01, 23, 0, 0, 0, time.UTC)
 		}
 
 		//By default, data should be retrieved from same database as logging is done
@@ -78,11 +80,11 @@ func main() {
 			if err != nil {
 				log.Error(err)
 			}
-			logDb.SetMaxIdleConns(config.GetMaxIdleConnections())
-			logDb.SetMaxOpenConns(config.GetMaxOpenConnections())
+			//logDb.SetMaxIdleConns(config.GetMaxIdleConnections())
+			//logDb.SetMaxOpenConns(config.GetMaxOpenConnections())
 		}
 
-		//Everything OK so far
+		// Everything OK so far
 		if scheduledRun != nil && err == nil {
 			//Get the configurations from the file with prefix stored in the DB (field PARAMETER)
 			configurations := config.GetConfig(scheduledRun.Parameter)

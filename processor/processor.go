@@ -233,96 +233,99 @@ func GetMeteringPoints(db *sql.DB, meteringPoints chan<- []string, nWorkload int
 //TimeSeriesWorker reads the metering points channel and writes the time series for each metering point in a separate json file
 func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtNoTimeSeriesFound, sqlstmtTimeSeriesFound *sql.Stmt, items <-chan []string, runTo time.Time, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool, numberOfFilesToRename *int) (map[string]metaInfo, error) {
 
+
 	timer := time.Now()
+	var fileNames []string
 	timeSeriesInfo := map[string]metaInfo{}
 	fromTime, _ := time.Parse(config.GetExportDateLayout(), fromTimeFormatted)
 	toTime, _ := time.Parse(config.GetExportDateLayout(), toTimeFormatted)
 
+
 	//For each metering point read from the metering points channel
-	fileCounter := 0
 	for itemSlice := range items {
 		for _, itemId := range itemSlice {
 			//The list of time series that will be written to the file
 			data, metaInfo, migrate, err := getTimeSeriesList(itemId, fromTime, toTime, runTo, db, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries)
 
-			if migrate {
+			if migrate && len(data.TimeSeries) > 0{
 				if metaInfo != nil {
 					timeSeriesInfo[itemId] = *metaInfo
 				}
 
-				if len(data.TimeSeries) > 0 {
-					//Prepare the json for printing
-					finishedJSON, err := json.MarshalIndent(data, "", "   ")
-					//data = nil
-					if err != nil {
-						log.Error(err)
-						return nil, err
-					}
+				//Prepare the json for printing
+				finishedJSON, err := json.MarshalIndent(data, "", "   ")
+				//data = nil
+				if err != nil {
+					log.Error(err)
+					return nil, err
+				}
 
-					//Sets the filename based on the current objectId. Will have extension tmp until all are done and then changed to json
-					fileNameWithoutExtension :=
-						config.GetFilenamePrefix() +
-							config.GetFilenameDelimiter() +
-							strconv.Itoa(migrationRunId) +
-							config.GetFilenameDelimiter() +
-							itemId +
-							config.GetFilenameDelimiter() +
-							timeSeriesInfo[itemId].processedFromTime.Format(config.GetFileDateLayout()) +
-							config.GetFilenameDelimiter() +
-							toTime.Format(config.GetFileDateLayout())
+				//Sets the filename based on the current objectId. Will have extension tmp until all are done and then changed to json
+				fileNameWithoutExtension :=
+					config.GetFilenamePrefix() +
+						config.GetFilenameDelimiter() +
+						strconv.Itoa(migrationRunId) +
+						config.GetFilenameDelimiter() +
+						itemId +
+						config.GetFilenameDelimiter() +
+						timeSeriesInfo[itemId].processedFromTime.Format(config.GetFileDateLayout()) +
+						config.GetFilenameDelimiter() +
+						toTime.Format(config.GetFileDateLayout())
 
-					//timer.Format(config.GetFilenameDateLayout())
-					fileName := fileLocation + "/" + fileNameWithoutExtension + config.GetTmpExtension()
+				//timer.Format(config.GetFilenameDateLayout())
+				fileName := fileLocation + "/" + fileNameWithoutExtension + config.GetTmpExtension()
 
-					//Write the json file
-					err = ioutil.WriteFile(fileName, finishedJSON, 0644)
-					if err != nil {
-						log.Error(err)
-						return nil, err
-					}
+				//Write the json file
+				err = ioutil.WriteFile(fileName, finishedJSON, 0644)
+				if err != nil {
+					log.Error(err)
+					return nil, err
+				}
 
-					fileCounter++
-					if fileCounter == *numberOfFilesToRename {
-						fileCounter = 0
+				fileNames = append(fileNames, fileName)
+				if len(fileNames) == *numberOfFilesToRename {
+					for i := 0; i < len(fileNames); i++ {
+						//Run the prepared SQL query that inserts to the progress table
+						fileName = fileNames[i]
+						strId := getItemFromFileName(fileName)
+
 						//Rename .tmp to .json in the folder
-						filenames, err := renameFiles(fileLocation, config.GetTmpExtension(), config.GetFinalExtension())
+						_ , err = renameFile(fileName, config.GetTmpExtension(), config.GetFinalExtension())
 						if err == nil {
 							if config.GetScheduledRunFromMigrationTable() {
 								//Insert the filenames in the progress table
-								for i := 0; i < len(filenames); i++ {
-									//Run the prepared SQL query that inserts to the progress table
-									filename := filenames[i]
-									strId := getItemFromFileName(filename)
-									fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", timeSeriesInfo[strId].transactionIdCountActual, timeSeriesInfo[strId].transactionIdCountHist, int(timeSeriesInfo[strId].sumActualReadingValues))
+								//Run the prepared SQL query that inserts to the progress table
+								fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", timeSeriesInfo[strId].transactionIdCountActual, timeSeriesInfo[strId].transactionIdCountHist, int(timeSeriesInfo[strId].sumActualReadingValues))
 
-									if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
-										_, err = sqlstmtTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "Y", filename, fileDetails, timeSeriesInfo[strId].meteringPointId)
-										if err != nil {
-											log.Error(err)
-											return nil, err
-										}
+								if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
+									_, err = sqlstmtTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "Y", fileNameWithoutExtension + config.GetFinalExtension(), fileDetails, strId)
+									if err != nil {
+										log.Error(err)
+										return nil, err
 									}
 								}
+							} else {
+								return nil, err
 							}
 						} else {
 							return nil, err
 						}
 					}
+					fileNames = nil
+				}
+			} else {
+				//No time series found for MP
+				log.Debug("No time series found for meterpoint ", itemId)
 
-				} else {
-					//No time series found for MP
-					log.Debug("No time series found for meterpoint ", itemId)
+				if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
+					filename := "N/A"
+					fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", 0, 0, 0)
 
-					if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
-						filename := "N/A"
-						fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", 0, 0, 0)
-
-						//Run the prepared SQL query that inserts to the progress table
-						_, err := sqlstmtNoTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "N", filename, fileDetails, itemId)
-						if err != nil {
-							log.Error(err)
-							return nil, err
-						}
+					//Run the prepared SQL query that inserts to the progress table
+					_, err := sqlstmtNoTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "N", filename, fileDetails, itemId)
+					if err != nil {
+						log.Error(err)
+						return nil, err
 					}
 				}
 			}
@@ -477,14 +480,18 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	var timeSerieValues []models.TimeSeriesValue
 	var transactionId, messageId, readReason NullString
 	var transactionIdStr, messageIdStr, readReasonStr string
-	var historicalFlag, resolution, unit string
+	var historicalFlag, resolution,  unit string
+	var prevResolution  string
+
 	var validFromDate, validToDate, transactionInsertDate NullTime
+	var prevValidFromDate, prevValidToDate NullTime
 	var validFromDateFormatted, validToDateFormatted, transactionInsertDateFormatted string
 	var timeSeriesValue models.TimeSeriesValue
 	var position, serieStatus int
 	var quantity float64
 	var quality string
-	var readingTime NullTime
+	var valueData string
+	//var readingTime NullTime
 
 	transactionIdCountActual := map[string]int{}
 	transactionIdCountHist := map[string]int{}
@@ -505,73 +512,99 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			&historicalFlag,
 			&resolution,
 			&unit,
-			&position,
-			&readingTime,
-			&quantity,
-			&quality,
+			&valueData,
 			&serieStatus,
 			&readReason)
 
-		validFromDateFormatted, err = formatDate(UTC, validFromDate, "")
-		if err != nil {
-			log.Error(err)
-			return data, nil, true, err
-		}
-		validToDateFormatted, err = formatDate(UTC, validToDate, resolution)
-		if err != nil {
-			log.Error(err)
-			return data, nil, true, err
-		}
-		transactionInsertDateFormatted, err = formatDate(UTC, transactionInsertDate, "")
-		if err != nil {
-			log.Error(err)
-			return data, nil, true, err
-		}
+		skipThis := false
 
-		if timeSeriesValue.Position > position || (timeSeriesData.HistoricalFlag != "" && timeSeriesData.HistoricalFlag != historicalFlag) {
-			timeSeriesData.TimeSeriesValues = timeSerieValues
-			timeSerieValues = nil
-
-			timeSeriesList = append(timeSeriesList, timeSeriesData)
-		}
-
-		timeSeriesValue.Position = position
-		timeSeriesValue.Quantity = quantity
-
-		sumActualReadingValues += quantity
-		timeSeriesValue.Quality = quality
-
-		transactionIdStr = formatNullString(transactionId)
-		messageIdStr = formatNullString(messageId)
-		readReasonStr = formatNullString(readReason)
-
-		timeSeriesData.TransactionId = transactionIdStr
-		timeSeriesData.MessageId = messageIdStr
-		timeSeriesData.ValidFromDate = validFromDateFormatted
-		timeSeriesData.ValidToDate = validToDateFormatted
-		timeSeriesData.TransactionInsertDate = transactionInsertDateFormatted
-		timeSeriesData.HistoricalFlag = historicalFlag
-
-		if historicalFlag == "N" {
-			_, ok := transactionIdCountActual[transactionIdStr+transactionInsertDateFormatted]
-			if !ok {
-				transactionIdCountActual[transactionIdStr+transactionInsertDateFormatted] = 1
+		if  prevResolution == "15" && resolution == "60" {
+			if validFromDate.Time.Before(prevValidToDate.Time) && validToDate.Time.After(prevValidFromDate.Time){
+				skipThis = true
 			}
-		} else {
-			_, ok := transactionIdCountHist[transactionIdStr+transactionInsertDateFormatted]
-			if !ok {
-				transactionIdCountHist[transactionIdStr+transactionInsertDateFormatted] = 1
+     	}
+		if !skipThis {
+			validFromDateFormatted, err = formatDate(UTC, validFromDate, "")
+			if err != nil {
+				log.Error(err)
+				return data, nil, true, err
 			}
-		}
+			validToDateFormatted, err = formatDate(UTC, validToDate, resolution)
+			if err != nil {
+				log.Error(err)
+				return data, nil, true, err
+			}
+			transactionInsertDateFormatted, err = formatDate(UTC, transactionInsertDate, "")
+			if err != nil {
+				log.Error(err)
+				return data, nil, true, err
+			}
 
-		timeSeriesData.Resolution = resolution
-		timeSeriesData.Unit = unit
-		timeSeriesData.Status = serieStatus
-		timeSeriesData.ReadReason = readReasonStr
-		timeSeriesValue.Position = position
-		timeSeriesValue.Quantity = quantity
-		timeSeriesValue.Quality = quality
-		timeSerieValues = append(timeSerieValues, timeSeriesValue)
+			validFromDateNoTimeZone, _ := time.Parse(config.GetExportDateLayout(), validFromDate.Time.Format(config.GetExportDateLayout()))
+
+			if timeSeriesValue.Position > position || (timeSeriesData.HistoricalFlag != "" && timeSeriesData.HistoricalFlag != historicalFlag) {
+				timeSeriesData.TimeSeriesValues = timeSerieValues
+				timeSerieValues = nil
+				timeSeriesList = append(timeSeriesList, timeSeriesData)
+			}
+
+			valueData = strings.ReplaceAll(valueData, "<E>", "" )
+			valueData = strings.ReplaceAll(valueData, "</E>", "" )
+			values := strings.Split(valueData, ";")
+
+			for i, s := range values {
+				position = i+1
+				valueDetails := strings.Split(s, "|")
+				intResolution, _ := strconv.Atoi(resolution)
+				if len(valueDetails) >= 3 {
+					readingTime, _ := time.Parse(config.GetExportDateLayout(), valueDetails[0])
+					if  intResolution == 15 || intResolution == 60 {
+						duration := readingTime.Sub(validFromDateNoTimeZone)
+						position = int(duration.Minutes()) / intResolution + 1
+					}
+					quantity, _ = strconv.ParseFloat(valueDetails[1], 64)
+					quality = valueDetails[2]
+					timeSeriesValue.Position = position
+					timeSeriesValue.Quantity = quantity
+					timeSeriesValue.Quality = quality
+					sumActualReadingValues += quantity
+					timeSeriesValue.Quality = quality
+					timeSerieValues = append(timeSerieValues, timeSeriesValue)
+				}
+			}
+
+			transactionIdStr = formatNullString(transactionId)
+			messageIdStr = formatNullString(messageId)
+			readReasonStr = formatNullString(readReason)
+
+			timeSeriesData.TransactionId = transactionIdStr
+			timeSeriesData.MessageId = messageIdStr
+			timeSeriesData.ValidFromDate = validFromDateFormatted
+			timeSeriesData.ValidToDate = validToDateFormatted
+			timeSeriesData.TransactionInsertDate = transactionInsertDateFormatted
+			timeSeriesData.HistoricalFlag = historicalFlag
+
+			if historicalFlag == "N" {
+				_, ok := transactionIdCountActual[transactionIdStr+transactionInsertDateFormatted]
+				if !ok {
+					transactionIdCountActual[transactionIdStr+transactionInsertDateFormatted] = 1
+				}
+			} else {
+				_, ok := transactionIdCountHist[transactionIdStr+transactionInsertDateFormatted]
+				if !ok {
+					transactionIdCountHist[transactionIdStr+transactionInsertDateFormatted] = 1
+				}
+			}
+
+			timeSeriesData.Resolution = resolution
+			timeSeriesData.Unit = unit
+			timeSeriesData.Status = serieStatus
+			timeSeriesData.ReadReason = readReasonStr
+
+			prevValidFromDate = validFromDate
+			prevValidToDate = validToDate
+			prevResolution = resolution
+		}
 	}
 
 	if timeSerieValues != nil {
@@ -821,6 +854,19 @@ func renameFiles(folderName string, oldExtension string, newExtension string) ([
 	}
 	return filenames, nil
 }
+
+//renameFile changes the extension of the file
+func renameFile(originalFileName string, oldExtension string, newExtension string) (string, error) {
+	filename := strings.TrimSuffix(originalFileName, filepath.Ext(originalFileName))
+	err := os.Rename(filename+oldExtension, filename+newExtension)
+	if err != nil {
+		log.Error(err)
+	} else {
+		log.Debug("JSON file created: ", filename+newExtension)
+	}
+	return filename+newExtension, nil
+}
+
 
 //RemoveFiles removes the files with the given extension in the given folder
 func RemoveFiles(folderName string, extension string) error {

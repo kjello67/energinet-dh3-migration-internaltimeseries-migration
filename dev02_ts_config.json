@@ -1,7 +1,7 @@
 {
   "FILE_LOCATION":   "./out/DEV02",
-  "SQL_ITEM_COUNT":  "select count(distinct(objectid)) from reading.m_meterpoint where objectid in ('575165230714233855','570500000000000065', '571300004456302581', '571300298509622249', '573521679180266789')",
-  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where objectid in ('575165230714233855','570500000000000065', '571300004456302581', '571300298509622249', '573521679180266789')",
-  "DEBUG_LOGGING":   true,
-  "RENAME_BULK":  2
+  "SQL_ITEM_COUNT":  "select count(*) from reading.m_meterpoint where off_netarea = 909",
+  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where  off_netarea = 909",
+  "DEBUG_LOGGING":   false,
+  "RENAME_BULK":     3
 }
