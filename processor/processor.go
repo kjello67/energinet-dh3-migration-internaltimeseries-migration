@@ -304,8 +304,6 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 										return nil, err
 									}
 								}
-							} else {
-								return nil, err
 							}
 						} else {
 							return nil, err
@@ -541,23 +539,25 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			}
 
 			validFromDateNoTimeZone, _ := time.Parse(config.GetExportDateLayout(), validFromDate.Time.Format(config.GetExportDateLayout()))
+			validToDateNoTimeZone, _ := time.Parse(config.GetExportDateLayout(), validToDate.Time.Format(config.GetExportDateLayout()))
 
-			if timeSeriesValue.Position > position || (timeSeriesData.HistoricalFlag != "" && timeSeriesData.HistoricalFlag != historicalFlag) {
+/*			if timeSeriesValue.Position > position || (timeSeriesData.HistoricalFlag != "" && timeSeriesData.HistoricalFlag != historicalFlag) {
 				timeSeriesData.TimeSeriesValues = timeSerieValues
 				timeSerieValues = nil
 				timeSeriesList = append(timeSeriesList, timeSeriesData)
 			}
-
+*/
 			valueData = strings.ReplaceAll(valueData, "<E>", "" )
 			valueData = strings.ReplaceAll(valueData, "</E>", "" )
 			values := strings.Split(valueData, ";")
 
+			var readingTime time.Time
 			for i, s := range values {
 				position = i+1
 				valueDetails := strings.Split(s, "|")
 				intResolution, _ := strconv.Atoi(resolution)
 				if len(valueDetails) >= 3 {
-					readingTime, _ := time.Parse(config.GetExportDateLayout(), valueDetails[0])
+					readingTime, _ = time.Parse(config.GetExportDateLayout(), valueDetails[0])
 					if  intResolution == 15 || intResolution == 60 {
 						duration := readingTime.Sub(validFromDateNoTimeZone)
 						position = int(duration.Minutes()) / intResolution + 1
@@ -573,6 +573,14 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 				}
 			}
 
+			if (resolution == "15" || resolution == "60") && readingTime.Before(validToDateNoTimeZone) {
+				validToDate.Time = readingTime
+				validToDateFormatted, err = formatDate(UTC, validToDate, resolution)
+				if err != nil {
+					log.Error(err)
+					return data, nil, true, err
+				}
+			}
 			transactionIdStr = formatNullString(transactionId)
 			messageIdStr = formatNullString(messageId)
 			readReasonStr = formatNullString(readReason)
@@ -604,14 +612,14 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			prevValidFromDate = validFromDate
 			prevValidToDate = validToDate
 			prevResolution = resolution
+
+			timeSeriesData.TimeSeriesValues = timeSerieValues
+			timeSerieValues = nil
+			timeSeriesList = append(timeSeriesList, timeSeriesData)
 		}
 	}
 
-	if timeSerieValues != nil {
-		timeSeriesData.TimeSeriesValues = timeSerieValues
-		timeSeriesList = append(timeSeriesList, timeSeriesData)
-		data.TimeSeries = timeSeriesList
-	}
+	data.TimeSeries = timeSeriesList
 
 	if len(timeSeriesList) > 0 {
 		metaInfo := metaInfo{meteringPointId: meteringPointId, processedFromTime: processedFromTime, transactionIdCountActual: len(transactionIdCountActual), transactionIdCountHist: len(transactionIdCountHist), sumActualReadingValues: sumActualReadingValues}
