@@ -152,8 +152,8 @@ historical_value AS -- historical values for each of the time series
    JOIN reading.M_SERIE_VALUE_HIST h ON h.OLD_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'Y')
 SELECT -- Main SELECT
    m.metering_point_id,
-   coalesce(v.transref, 'Reference: ' || v.import_batch_id) AS transaction_id,
-   COALESCE(v.meldingsref, 'Comment: ' || v.sender_ref) AS meldingsref,
+   v.transref AS transaction_id, 
+   v.meldingsref, 
    v.valid_from_date,
    v.valid_to_date,
    v.inserted_timestamp,

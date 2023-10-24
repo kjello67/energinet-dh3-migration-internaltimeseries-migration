@@ -59,14 +59,14 @@ func main() {
 				log.Fatal(err)
 			}
 		} else {
-			migrationRunId = 111
+			migrationRunId = 112
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
 			scheduledRun.Threads = 1
 			scheduledRun.Parameter = "PRE07"
-//			scheduledRun.PeriodFromDate = time.Date(2015, 04, 30, 22, 0, 0, 0, time.UTC)
-//			scheduledRun.PeriodToDate = time.Date(2015, 05, 31, 22, 0, 0, 0, time.UTC)
+			//scheduledRun.PeriodFromDate = time.Date(2015, 04, 30, 22, 0, 0, 0, time.UTC)
+			//scheduledRun.PeriodToDate = time.Date(2015, 05, 31, 22, 0, 0, 0, time.UTC)
 			scheduledRun.PeriodFromDate = time.Date(2016, 12, 31, 23, 0, 0, 0, time.UTC)
 			scheduledRun.PeriodToDate = time.Date(2020, 12, 31, 23, 0, 0, 0, time.UTC)
 		}

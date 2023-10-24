@@ -539,7 +539,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			}
 
 			validFromDateNoTimeZone, _ := time.Parse(config.GetExportDateLayout(), validFromDate.Time.Format(config.GetExportDateLayout()))
-			validToDateNoTimeZone, _ := time.Parse(config.GetExportDateLayout(), validToDate.Time.Format(config.GetExportDateLayout()))
+//			validToDateNoTimeZone, _ := time.Parse(config.GetJSONDateLayoutLong(), validToDateFormatted)
 
 /*			if timeSeriesValue.Position > position || (timeSeriesData.HistoricalFlag != "" && timeSeriesData.HistoricalFlag != historicalFlag) {
 				timeSeriesData.TimeSeriesValues = timeSerieValues
@@ -552,6 +552,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			values := strings.Split(valueData, ";")
 
 			var readingTime time.Time
+			allQM := true
 			for i, s := range values {
 				position = i+1
 				valueDetails := strings.Split(s, "|")
@@ -565,22 +566,55 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 					quantity, _ = strconv.ParseFloat(valueDetails[1], 64)
 					quality = valueDetails[2]
 					timeSeriesValue.Position = position
-					timeSeriesValue.Quantity = quantity
+
 					timeSeriesValue.Quality = quality
+					qm := quality == "QM"
+
+					if !qm {
+						timeSeriesValue.Quantity = quantity
+						sumActualReadingValues += quantity
+						allQM = false
+					} else {
+						timeSeriesValue.Quantity = 0
+					}
 					sumActualReadingValues += quantity
 					timeSeriesValue.Quality = quality
 					timeSerieValues = append(timeSerieValues, timeSeriesValue)
 				}
 			}
+/*
+			if resolution == "15" || resolution == "60" {
+				deltaTime := readingTime.Sub(validToDate.Time)
 
-			if (resolution == "15" || resolution == "60") && readingTime.Before(validToDateNoTimeZone) {
-				validToDate.Time = readingTime
-				validToDateFormatted, err = formatDate(UTC, validToDate, resolution)
-				if err != nil {
-					log.Error(err)
-					return data, nil, true, err
+				if deltaTime.Minutes() != 0 {
+					validToDate.Time = validToDateNoTimeZone.Add(deltaTime)
+					validToDateFormatted, err = formatDate(UTC, validToDate, resolution)
+					if err != nil {
+						log.Error(err)
+						return data, nil, true, err
+					}
 				}
 			}
+
+			if resolution == "15" || resolution == "60" {
+				readingTimeEnd := readingTime.Add(time.Hour )
+				if  resolution == "15" {
+					readingTimeEnd = readingTime.Add(time.Minute * 15 )
+				}
+
+				// Should be the same but in some rare occasions it is not
+				if !readingTimeEnd.Equal(validToDate.Time) {
+					deltaTime :=  readingTimeEnd.Sub(validToDate.Time)
+
+					validToDate.Time = validToDate.Time.Add(deltaTime)
+					validToDateFormatted, err = formatDate(UTC, validToDate, resolution)
+					if err != nil {
+						log.Error(err)
+						return data, nil, true, err
+					}
+				}
+			}
+*/
 			transactionIdStr = formatNullString(transactionId)
 			messageIdStr = formatNullString(messageId)
 			readReasonStr = formatNullString(readReason)
@@ -602,6 +636,10 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 				if !ok {
 					transactionIdCountHist[transactionIdStr+transactionInsertDateFormatted] = 1
 				}
+			}
+
+			if readReasonStr == "" && allQM && transactionIdStr == "" {
+				readReasonStr = "CAN"
 			}
 
 			timeSeriesData.Resolution = resolution

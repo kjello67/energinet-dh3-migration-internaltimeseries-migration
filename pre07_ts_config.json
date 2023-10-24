@@ -1,6 +1,6 @@
 {
   "FILE_LOCATION":   "./out/PRE07",
-  "SQL_ITEM_COUNT":  "select count(distinct(objectid)) from reading.m_meterpoint where objectid in ('571313100200000872','571313100200001046','571313174000958992','571313180480500286','571313180480500293','571313144100200635','571313174115847259','571313179100149714')",
-  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where objectid in ('571313100200000872','571313100200001046','571313174000958992','571313180480500286','571313180480500293','571313144100200635','571313174115847259','571313179100149714')",
+  "SQL_ITEM_COUNT":  "select count(distinct(objectid)) from reading.m_meterpoint where objectid in ('571313179100149714')",
+  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where objectid in ('571313179100149714')",
   "DEBUG_LOGGING":   false
 }
