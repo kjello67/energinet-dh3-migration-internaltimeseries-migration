@@ -15,7 +15,9 @@ import (
 	"time"
 	"timeseries-migration/config"
 	"timeseries-migration/models"
+	"timeseries-migration/repository"
 	"timeseries-migration/sqls"
+	"timeseries-migration/utils"
 )
 
 func logError(err error) (bool, error) {
@@ -49,37 +51,9 @@ func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation 
 	//Close the channel for new entries
 	close(meteringPoints)
 
-	//Prepare the SQL query that retrieves the time series
-	sqlstmtSelectMasterData, err := db.Prepare(sqls.GetSQLSelectMasterData())
-	if err != nil {
-		log.Error(err)
-		return false, err
-	}
-	defer sqlstmtSelectMasterData.Close()
-
-	//Prepare the SQL query that retrieves the time series
-	sqlstmtSelectTimesSeries, err := db.Prepare(sqls.GetSQLSelectData())
-	if err != nil {
-		log.Error(err)
-		return false, err
-	}
-	defer sqlstmtSelectTimesSeries.Close()
-
-	//Prepare the SQL query that inserts to the progress table
-	sqlstmtNoTimeSeriesFound, err := db.Prepare(sqls.GetSQLInsertNoDataFound())
-	if err != nil {
-		log.Error(err)
-		return false, err
-	}
-	defer sqlstmtNoTimeSeriesFound.Close()
-
-	//Prepare the SQL query that inserts to the progress table
-	sqlstmtTimeSeriesFound, err := logDb.Prepare(sqls.GetSQLInsertFinishedTimeSeriesExportFile())
-	if err != nil {
-		log.Error(err)
-		return false, err
-	}
-	defer sqlstmtTimeSeriesFound.Close()
+	repo := repository.NewRepository(db, logDb)
+	repo.InitProgressTableSQLs()
+	defer repo.Close()
 
 	//WaitGroup used to ensure the function doesn't end before all the workers are finished
 	wg := sync.WaitGroup{}
@@ -92,7 +66,7 @@ func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation 
 		wg.Add(1)
 		go func() {
 			//Create a worker
-			metaInfo, err := TimeSeriesWorker(db, sqlstmtSelectMasterData, sqlstmtSelectTimesSeries, sqlstmtNoTimeSeriesFound, sqlstmtTimeSeriesFound, meteringPoints, run.PeriodToDate, fromTimeFormatted, toTimeFormatted, fileLocation, run.MigrationRunId, skipDBUpdate, numberOfFilesToRename)
+			metaInfo, err := TimeSeriesWorker(db, repo, meteringPoints, run.PeriodToDate, fromTimeFormatted, toTimeFormatted, fileLocation, run.MigrationRunId, skipDBUpdate, numberOfFilesToRename)
 
 			res := result{metaInfo: nil, mainErr: nil, returnValue: true}
 			if err != nil {
@@ -142,7 +116,7 @@ func MigrateTimeSeries(nWorkers, nWorkload int, db, logDb *sql.DB, fileLocation 
 				fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", info.transactionIdCountActual, info.transactionIdCountHist, int(info.sumActualReadingValues))
 
 				if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
-					_, err = sqlstmtTimeSeriesFound.Exec(run.MigrationRunId, fromTimeFormatted, toTimeFormatted, "Y", filename, fileDetails, info.meteringPointId)
+					err = repo.ExecSqlstmtTimeSeriesFound(run.MigrationRunId, fromTimeFormatted, toTimeFormatted, filename, fileDetails, info.meteringPointId)
 					if err != nil {
 						log.Error(err)
 						return false, err
@@ -231,9 +205,7 @@ func GetMeteringPoints(db *sql.DB, meteringPoints chan<- []string, nWorkload int
 }
 
 //TimeSeriesWorker reads the metering points channel and writes the time series for each metering point in a separate json file
-func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries, sqlstmtNoTimeSeriesFound, sqlstmtTimeSeriesFound *sql.Stmt, items <-chan []string, runTo time.Time, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool, numberOfFilesToRename *int) (map[string]metaInfo, error) {
-
-
+func TimeSeriesWorker(db *sql.DB, repo repository.Repository, items <-chan []string, runTo time.Time, fromTimeFormatted, toTimeFormatted, fileLocation string, migrationRunId int, skipDBUpdate bool, numberOfFilesToRename *int) (map[string]metaInfo, error) {
 	timer := time.Now()
 	var fileNames []string
 	timeSeriesInfo := map[string]metaInfo{}
@@ -245,7 +217,7 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 	for itemSlice := range items {
 		for _, itemId := range itemSlice {
 			//The list of time series that will be written to the file
-			data, metaInfo, migrate, err := getTimeSeriesList(itemId, fromTime, toTime, runTo, db, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries)
+			data, metaInfo, migrate, err := getTimeSeriesList(itemId, fromTime, toTime, runTo, db, repo)
 
 			if migrate && len(data.TimeSeries) > 0{
 				if metaInfo != nil {
@@ -298,7 +270,7 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 								fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", timeSeriesInfo[strId].transactionIdCountActual, timeSeriesInfo[strId].transactionIdCountHist, int(timeSeriesInfo[strId].sumActualReadingValues))
 
 								if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
-									_, err = sqlstmtTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "Y", fileNameWithoutExtension + config.GetFinalExtension(), fileDetails, strId)
+									err = repo.ExecSqlstmtTimeSeriesFound(migrationRunId, fromTimeFormatted, toTimeFormatted, fileNameWithoutExtension + config.GetFinalExtension(), fileDetails, strId)
 									if err != nil {
 										log.Error(err)
 										return nil, err
@@ -320,7 +292,7 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 					fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", 0, 0, 0)
 
 					//Run the prepared SQL query that inserts to the progress table
-					_, err := sqlstmtNoTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "N", filename, fileDetails, itemId)
+					err := repo.ExecSqlstmtNoTimeSeriesFound(migrationRunId, fromTimeFormatted, toTimeFormatted, filename, fileDetails, itemId)
 					if err != nil {
 						log.Error(err)
 						return nil, err
@@ -338,47 +310,6 @@ func TimeSeriesWorker(db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeri
 	return timeSeriesInfo, nil
 }
 
-func getMasterData(meteringPointId string, sqlstmtSelectMasterData *sql.Stmt, PST *time.Location) ([]models.Masterdata, error) {
-
-	var masterDataRows []models.Masterdata
-	var masterDataRow models.Masterdata
-	var gridArea, typeOfMP, validFromDateFormatted string
-	var validToDateFormatted *string
-	var validFromDate, validToDate NullTime
-
-	//Run the prepared SQL query that retrieves the time series
-	rows, err := sqlstmtSelectMasterData.Query(meteringPointId)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	//Loop through the result from the executed SQL query
-	for rows.Next() {
-
-		//Store the values from the current line in the result to local variables
-		rows.Scan(
-			&meteringPointId, &gridArea, &typeOfMP, &validFromDate, &validToDate)
-
-		validFromDateFormatted, err = formatDate(PST, validFromDate, "")
-		if err != nil {
-			log.Error(err)
-			return masterDataRows, err
-		}
-		validToDateFormatted, err = formatDatePointer(PST, validToDate)
-		if err != nil {
-			log.Error(err)
-			return masterDataRows, err
-		}
-		masterDataRow.GridArea = gridArea
-		masterDataRow.TypeOfMP = typeOfMP
-		masterDataRow.MasterDataStartDate = validFromDateFormatted
-		masterDataRow.MasterDataEndDate = validToDateFormatted
-		masterDataRows = append(masterDataRows, masterDataRow)
-	}
-	return masterDataRows, nil
-}
 
 // checkDataMigrationExportedPeriod
 func findDataMigrationExportedPeriod(meteringPointId string, periodFromDate, periodToDate time.Time, db *sql.DB) (time.Time, bool, error) {
@@ -391,7 +322,7 @@ func findDataMigrationExportedPeriod(meteringPointId string, periodFromDate, per
 	}
 	defer rows.Close()
 
-	var exportedToDate NullTime
+	var exportedToDate utils.NullTime
 
 	//Loop through the result from the executed SQL query
 	for rows.Next() {
@@ -421,7 +352,7 @@ func findDataMigrationExportedPeriod(meteringPointId string, periodFromDate, per
 
 }
 
-func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntilTime, runTo time.Time, db *sql.DB, sqlstmtSelectMasterData, sqlstmtSelectTimeSeries *sql.Stmt) (models.Data, *metaInfo, bool, error) {
+func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntilTime, runTo time.Time, db *sql.DB, repo repository.Repository) (models.Data, *metaInfo, bool, error) {
 	//The list of time series that will be written to the file
 	var meteringPointData models.MeteringPointData
 	meteringPointData.MeteringPointId = meteringPointId
@@ -440,7 +371,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		return data, nil, false, err
 	}
 
-	masterData, err = getMasterData(meteringPointId, sqlstmtSelectMasterData, PST)
+	masterData, err = repo.GetMasterData(meteringPointId, PST)
 	if err != nil {
 		log.Error(err)
 		return data, nil, false, err
@@ -466,7 +397,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 		}
 	}
 
-	rows, err := sqlstmtSelectTimeSeries.Query(meteringPointId, processedFromTime, processedUntilTime)
+	rows, err := repo.ExecSqlstmtSelectTimesSeries(meteringPointId, processedFromTime, processedUntilTime)
 	if err != nil {
 		log.Error(err)
 		return data, nil, true, err
@@ -476,13 +407,13 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	//Variables to hold the time series
 	var timeSeriesData models.TimeSeriesData
 	var timeSerieValues []models.TimeSeriesValue
-	var transactionId, messageId, readReason NullString
+	var transactionId, messageId, readReason utils.NullString
 	var transactionIdStr, messageIdStr, readReasonStr string
 	var historicalFlag, resolution,  unit string
 	var prevResolution  string
 
-	var validFromDate, validToDate, transactionInsertDate NullTime
-	var prevValidFromDate, prevValidToDate NullTime
+	var validFromDate, validToDate, transactionInsertDate utils.NullTime
+	var prevValidFromDate, prevValidToDate utils.NullTime
 	var validFromDateFormatted, validToDateFormatted, transactionInsertDateFormatted string
 	var timeSeriesValue models.TimeSeriesValue
 	var position, serieStatus int
@@ -522,17 +453,17 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			}
      	}
 		if !skipThis {
-			validFromDateFormatted, err = formatDate(UTC, validFromDate, "")
+			validFromDateFormatted, err = utils.FormatDate(UTC, validFromDate, "")
 			if err != nil {
 				log.Error(err)
 				return data, nil, true, err
 			}
-			validToDateFormatted, err = formatDate(UTC, validToDate, resolution)
+			validToDateFormatted, err = utils.FormatDate(UTC, validToDate, resolution)
 			if err != nil {
 				log.Error(err)
 				return data, nil, true, err
 			}
-			transactionInsertDateFormatted, err = formatDate(UTC, transactionInsertDate, "")
+			transactionInsertDateFormatted, err = utils.FormatDate(UTC, transactionInsertDate, "")
 			if err != nil {
 				log.Error(err)
 				return data, nil, true, err
@@ -667,7 +598,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 	}
 }
 
-func formatNullString(nullString NullString) string {
+func formatNullString(nullString utils.NullString) string {
 	var formattedString string
 	if nullString.Valid {
 		formattedString = nullString.String
@@ -677,7 +608,7 @@ func formatNullString(nullString NullString) string {
 	return formattedString
 }
 
-func formatNullStringPointer(nullString NullString) *string {
+func formatNullStringPointer(nullString utils.NullString) *string {
 	var formattedString *string
 	if nullString.Valid {
 		if nullString.String == "" {
@@ -691,7 +622,7 @@ func formatNullStringPointer(nullString NullString) *string {
 	return formattedString
 }
 
-func formatNullFloat(nullFloat NullFloat) float64 {
+func formatNullFloat(nullFloat utils.NullFloat) float64 {
 	var formattedString float64
 	if nullFloat.Valid {
 		formattedString = nullFloat.Float64
@@ -699,46 +630,6 @@ func formatNullFloat(nullFloat NullFloat) float64 {
 		formattedString = -1
 	}
 	return formattedString
-}
-
-func formatDate(PST *time.Location, nullTime NullTime, resolution string) (string, error) {
-	//Format the dates to ISO 8601 (RFC-3339)
-	var dateFormatted string
-	if nullTime.Valid {
-		if resolution == "60" {
-			dateFormatted = nullTime.Time.Add(-1 * time.Hour).Format(config.GetJSONDateLayoutLong())
-		} else if resolution == "15" {
-			dateFormatted = nullTime.Time.Add(-15 * time.Minute).Format(config.GetJSONDateLayoutLong())
-		} else {
-			dateFormatted = nullTime.Time.Format(config.GetJSONDateLayoutLong())
-		}
-		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), dateFormatted, PST)
-		if err != nil {
-			log.Error(err)
-			return "", err
-		}
-		dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
-	} else {
-		dateFormatted = ""
-	}
-	return dateFormatted, nil
-}
-
-func formatDatePointer(PST *time.Location, nullTime NullTime) (*string, error) {
-	//Format the dates to ISO 8601 (RFC-3339)
-	var dateFormatted string
-	if nullTime.Valid {
-		dateFormatted = nullTime.Time.Format(config.GetJSONDateLayoutLong())
-		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), dateFormatted, PST)
-		if err != nil {
-			log.Error(err)
-			return nil, err
-		}
-		dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
-		return &dateFormatted, nil
-	} else {
-		return nil, nil
-	}
 }
 
 // checkDataMigrationExportedPeriod
@@ -750,7 +641,7 @@ func checkDataMigrationExportedPeriod(periodFromDate time.Time, migrationRunId i
 	}
 	defer rows.Close()
 
-	var maxFromDate, maxToDate NullTime
+	var maxFromDate, maxToDate utils.NullTime
 
 	//Loop through the result from the executed SQL query
 	for rows.Next() {
@@ -777,8 +668,8 @@ func checkDataMigrationExportedPeriod(periodFromDate time.Time, migrationRunId i
 	}
 
 	return err
-
 }
+
 
 //SchedulerWorker reads the DB to see if there are any scheduled migration runs
 func SchedulerWorker(db *sql.DB) (*models.ScheduledRun, int, error) {
@@ -798,7 +689,7 @@ func SchedulerWorker(db *sql.DB) (*models.ScheduledRun, int, error) {
 	//Variables to hold the scheduler data
 	var scheduledRun models.ScheduledRun
 	var threads, migrationRunId int
-	var migrationDueDate NullTime
+	var migrationDueDate utils.NullTime
 	var periodFromDate, periodToDate time.Time
 	var parameter, migrationDueDateFormatted string
 	var useListOfMPs, useListOfOwners, useListOfGridAreas bool
@@ -955,28 +846,6 @@ func getItemFromFileName(fileName string) string {
 	return name
 }
 
-func bool2intstring(b bool) string {
-	if b {
-		return "1"
-	}
-	return "0"
-}
-
-type NullTime struct {
-	sql.NullTime
-}
-
-type NullBool struct {
-	sql.NullBool
-}
-
-type NullString struct {
-	sql.NullString
-}
-
-type NullFloat struct {
-	sql.NullFloat64
-}
 
 type metaInfo struct {
 	meteringPointId          string
