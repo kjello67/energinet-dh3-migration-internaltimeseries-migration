@@ -6,10 +6,9 @@ import (
 	"os"
 	"time"
 	"timeseries-migration/config"
-	"timeseries-migration/database"
 	"timeseries-migration/models"
 	"timeseries-migration/processor"
-	"timeseries-migration/sqls"
+	"timeseries-migration/repository"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -41,9 +40,9 @@ func main() {
 	var dbConnectionString = flag.String("log", connectionStringData, "Database connection string to the data server.")
 	var logConnectionString = flag.String("logDb", connectionStringLog, "Database connection string to the log server.")
 
-	//Open connection to the database from where the data should be retrieved
-	db, err := database.InitDB(*dbConnectionString)
-	defer db.Close()
+	repo, err := repository.NewRepository(*dbConnectionString, *logConnectionString)
+	repo.InitProgressTableSQLs()
+	defer repo.Close()
 	if err != nil {
 		//Only log in file as the DB is not available
 		log.Fatal(err)
@@ -54,12 +53,12 @@ func main() {
 		//Check if there is a scheduled run
 		var scheduledRun *models.ScheduledRun
 		if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
-			scheduledRun, migrationRunId, err = processor.SchedulerWorker(db)
+			scheduledRun, migrationRunId, err = repo.SchedulerWorker()
 			if err != nil {
 				log.Fatal(err)
 			}
 		} else {
-			migrationRunId = 112
+			migrationRunId = 113
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
@@ -69,19 +68,6 @@ func main() {
 			//scheduledRun.PeriodToDate = time.Date(2015, 05, 31, 22, 0, 0, 0, time.UTC)
 			scheduledRun.PeriodFromDate = time.Date(2016, 12, 31, 23, 0, 0, 0, time.UTC)
 			scheduledRun.PeriodToDate = time.Date(2020, 12, 31, 23, 0, 0, 0, time.UTC)
-		}
-
-		//By default, data should be retrieved from same database as logging is done
-		logDb := db
-		if dbConnectionString != logConnectionString {
-			//Open connection to the database where the logging should be done if different from data DB
-			logDb, err := database.InitDB(*logConnectionString)
-			defer logDb.Close()
-			if err != nil {
-				log.Error(err)
-			}
-			//logDb.SetMaxIdleConns(config.GetMaxIdleConnections())
-			//logDb.SetMaxOpenConns(config.GetMaxOpenConnections())
 		}
 
 		// Everything OK so far
@@ -104,7 +90,7 @@ func main() {
 
 			//Update the status to running
 			if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
-				_, err = db.Exec(sqls.GetSQLUpdateStatusToRunning(scheduledRun.MigrationRunId))
+				err = repo.SetSQLUpdateStatusToRunning(scheduledRun.MigrationRunId)
 			}
 
 			if err != nil {
@@ -118,7 +104,7 @@ func main() {
 					errorMessage = err.Error()
 				} else {
 					//Call the function that will extract the grid area and write the time series to files in the json format
-					ok, err := processor.MigrateTimeSeries(*nWorkers, *nWorkload, db, logDb, *fileLocation, *sqlFlag, *sqlItemCount, *sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE, numberOfFilesToRename)
+					ok, err := processor.MigrateTimeSeries(*nWorkers, *nWorkload, repo, *fileLocation, *sqlFlag, *sqlItemCount, *sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE, numberOfFilesToRename)
 					if err != nil {
 						log.Error(err)
 						errorMessage = err.Error()
@@ -127,7 +113,7 @@ func main() {
 
 						if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
 							//Update status to finished
-							_, err = db.Exec(sqls.GetSQLUpdateStatusToFinished(scheduledRun.MigrationRunId))
+							err = repo.SetSQLUpdateStatusToFinished(scheduledRun.MigrationRunId)
 							if err != nil {
 								log.Error(err)
 								errorMessage = err.Error()
@@ -142,7 +128,7 @@ func main() {
 	//Update status to error
 	if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() && errorMessage != "" && migrationRunId != -1 {
 		log.Debug("Time series are NOT migrated successfully. Updating status in DB.")
-		_, err := db.Exec(sqls.GetSQLUpdateStatusToError(migrationRunId, errorMessage))
+		err := repo.SetSQLUpdateStatusToError(migrationRunId, errorMessage)
 		if err != nil {
 			log.Error(err)
 		}

@@ -69,3 +69,26 @@ func bool2intstring(b bool) string {
 	return "0"
 }
 
+func formatNullStringPointer(nullString NullString) *string {
+	var formattedString *string
+	if nullString.Valid {
+		if nullString.String == "" {
+			formattedString = nil
+		} else {
+			formattedString = &nullString.String
+		}
+	} else {
+		formattedString = nil
+	}
+	return formattedString
+}
+
+func formatNullFloat(nullFloat NullFloat) float64 {
+	var formattedString float64
+	if nullFloat.Valid {
+		formattedString = nullFloat.Float64
+	} else {
+		formattedString = -1
+	}
+	return formattedString
+}
