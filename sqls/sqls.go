@@ -67,7 +67,7 @@ periodic_value AS -- the periodical volumes (monthly) stored as "time series" in
    pt.sender_ref,
    nvl2(pt.HIST_TIMESTAMP, 'Y', 'N') AS historical_flag,
    round(MONTHS_BETWEEN(pv.READING_START_DATE, pt.START_DATE) + 1, 0) AS position,
-   TO_CLOB (round(MONTHS_BETWEEN(pv.READING_START_DATE, pt.START_DATE) + 1, 0) || '|' || TO_CHAR(pv.READING_START_DATE, 'DD.MM.YYYY HH24:MI:SS') || '|' ||pv.AMOUNT || '|' || pv.DATA_ORIGIN || '|' ||pt.CANCELLED) as valuedata,
+   TO_CLOB (round(MONTHS_BETWEEN(pv.READING_START_DATE, pt.START_DATE) + 1, 0)  || '|' ||pv.AMOUNT || '|' || decode(pv.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B', 'D01', '?', 'QM') || '|' ||pt.CANCELLED) as valuedata,
   pv.READING_START_DATE,
    pv.AMOUNT,
    pv.DATA_ORIGIN,

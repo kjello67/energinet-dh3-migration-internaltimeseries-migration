@@ -370,8 +370,11 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 					if  intResolution == 15 || intResolution == 60 {
 						duration := readingTime.Sub(validFromDateNoTimeZone)
 						position = int(duration.Minutes()) / intResolution + 1
+					} else { // monthly timeseries
+						position, _ = strconv.Atoi(valueDetails[0])
 					}
-					quantity, _ = strconv.ParseFloat(valueDetails[1], 64)
+
+					quantity, _ = strconv.ParseFloat(strings.ReplaceAll(valueDetails[1], ",", "."), 64)
 					quality = valueDetails[2]
 					timeSeriesValue.Position = position
 
