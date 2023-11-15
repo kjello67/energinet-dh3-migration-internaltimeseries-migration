@@ -58,16 +58,16 @@ func main() {
 				log.Fatal(err)
 			}
 		} else {
-			migrationRunId = 116
+			migrationRunId = 117
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
 			scheduledRun.Threads = 1
-			scheduledRun.Parameter = "PRE07"
-			//scheduledRun.PeriodFromDate = time.Date(2015, 04, 30, 22, 0, 0, 0, time.UTC)
-			//scheduledRun.PeriodToDate = time.Date(2015, 05, 31, 22, 0, 0, 0, time.UTC)
-			scheduledRun.PeriodFromDate = time.Date(2015, 12, 31, 23, 0, 0, 0, time.UTC)
-			scheduledRun.PeriodToDate = time.Date(2023, 10, 20, 00, 0, 0, 0, time.UTC)
+			scheduledRun.Parameter = "PROD"
+			scheduledRun.PeriodFromDate = time.Date(2015, 04, 30, 22, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodToDate = time.Date(2015, 05, 31, 22, 0, 0, 0, time.UTC)
+			//scheduledRun.PeriodFromDate = time.Date(2015, 12, 31, 23, 0, 0, 0, time.UTC)
+			//scheduledRun.PeriodToDate = time.Date(2023, 10, 20, 00, 0, 0, 0, time.UTC)
 		}
 
 		// Everything OK so far
@@ -161,6 +161,17 @@ func getConnectionStrings(DBConfigurations config.Configuration) (string, string
 		log.Error("LOG_PASSWORD must be specified in the configuration file")
 		return "", "", false
 	}
+
+	if DBConfigurations.DB_ALIAS != "" && DBConfigurations.DB_HOST != "" {
+		log.Error("DB_ALIAS and DB_HOST cannot both be specified in the configuration file")
+		return "", "", false
+	}
+
+	if DBConfigurations.LOG_ALIAS != "" && DBConfigurations.LOG_HOST != "" {
+		log.Error("LOG_ALIAS and LOG_HOST cannot both be specified in the configuration file")
+		return "", "", false
+	}
+
 	if DBConfigurations.DB_ALIAS != "" {
 		connectionStringData = DBConfigurations.DB_USERNAME + "/" + DBConfigurations.DB_PASSWORD + "@" + DBConfigurations.DB_ALIAS
 	} else if DBConfigurations.DB_HOST != "" && DBConfigurations.DB_PORT != "" && DBConfigurations.DB_SID != "" {

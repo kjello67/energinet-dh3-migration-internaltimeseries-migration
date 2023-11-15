@@ -445,20 +445,20 @@ func (i *Impl) FindDataMigrationExportedPeriod(meteringPointId string, periodFro
 }
 
 func (i *Impl)  SetSQLUpdateStatusToRunning(migrationRunId int) error {
-	_, err := i.Db.Exec(sqls.GetSQLUpdateStatusToRunning(migrationRunId))
+	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToRunning(migrationRunId))
 
 	return err
 }
 
 func (i *Impl)  SetSQLUpdateStatusToFinished(migrationRunId int) error {
-	_, err := i.Db.Exec(sqls.GetSQLUpdateStatusToFinished(migrationRunId))
+	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToFinished(migrationRunId))
 
 	return err
 }
 
 
 func (i *Impl)  SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error {
-	_, err := i.Db.Exec(sqls.GetSQLUpdateStatusToError(migrationRunId, errorMessage))
+	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToError(migrationRunId, errorMessage))
 
 	return err
 }
