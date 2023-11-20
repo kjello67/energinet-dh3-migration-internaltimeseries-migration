@@ -58,16 +58,16 @@ func main() {
 				log.Fatal(err)
 			}
 		} else {
-			migrationRunId = 117
+			migrationRunId = 118
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
 			scheduledRun.Threads = 1
-			scheduledRun.Parameter = "PROD"
-			scheduledRun.PeriodFromDate = time.Date(2015, 04, 30, 22, 0, 0, 0, time.UTC)
-			scheduledRun.PeriodToDate = time.Date(2015, 05, 31, 22, 0, 0, 0, time.UTC)
-			//scheduledRun.PeriodFromDate = time.Date(2015, 12, 31, 23, 0, 0, 0, time.UTC)
-			//scheduledRun.PeriodToDate = time.Date(2023, 10, 20, 00, 0, 0, 0, time.UTC)
+			scheduledRun.Parameter = "PRE07"
+			//scheduledRun.PeriodFromDate = time.Date(2015, 04, 30, 22, 0, 0, 0, time.UTC)
+			//scheduledRun.PeriodToDate = time.Date(2015, 05, 31, 22, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodFromDate = time.Date(2015, 12, 31, 23, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodToDate = time.Date(2023, 10, 20, 00, 0, 0, 0, time.UTC)
 		}
 
 		// Everything OK so far

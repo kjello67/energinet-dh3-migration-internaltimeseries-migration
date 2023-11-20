@@ -175,5 +175,5 @@ func GetMaxIdleConnections() int {
 
 //GetScheduledRunFromMigrationTable returns...
 func GetScheduledRunFromMigrationTable() bool {
-	return true
+	return false
 }

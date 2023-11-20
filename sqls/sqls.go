@@ -205,7 +205,7 @@ FROM ((SELECT per.*, md.* FROM periodic_value per LEFT JOIN message_data md ON m
  JOIN METERING_POINT m ON m.mpoint_seqno = v.mpoint_seqno
  `
 	//Set the order of the SQL statement
-	sqlOrder := `   ORDER BY metering_point_id, valid_from_date, INSERTED_TIMESTAMP, historical_flag, meldingsref asc`
+	sqlOrder := `   ORDER BY metering_point_id, valid_from_date, resolution, INSERTED_TIMESTAMP, historical_flag, meldingsref asc`
 
 	return sql + sqlOrder
 }
