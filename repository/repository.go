@@ -21,15 +21,15 @@ type Repository interface {
 	InitProgressTableSQLs() error
 	ExecSqlstmtTimeSeriesFound(migrationRunId int, fromTimeFormatted, toTimeFormatted, fileName, fileDetails, strId string) error
 	ExecSqlstmtNoTimeSeriesFound(id int, fromTimeFormatted string, toTimeFormatted string, filename string, fileDetails string, strId string) error
-    ExecSqlstmtSelectTimesSeries(meteringPointId string, processedFromTime, processedUntilTime time.Time) (*sql.Rows, error)
+	ExecSqlstmtSelectTimesSeries(meteringPointId string, processedFromTime, processedUntilTime time.Time) (*sql.Rows, error)
 	GetMasterData(meteringPointId string, PST *time.Location) ([]models.Masterdata, error)
-    SchedulerWorker() (*models.ScheduledRun, int, error)
-    GetNumberOfMeteringPoints(sqlFlag bool, sqlCount string) (*int, error)
-    GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, mpFlag bool, sqlObjectIds string) error
-    FindDataMigrationExportedPeriod(meteringPointId string, periodFromDate, periodToDate time.Time) (time.Time, bool, error)
-    SetSQLUpdateStatusToRunning(migrationRunId int) error
-    SetSQLUpdateStatusToFinished(migrationRunId int) error
-    SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error
+	SchedulerWorker() (*models.ScheduledRun, int, error)
+	GetNumberOfMeteringPoints(sqlFlag bool, sqlCount string) (*int, error)
+	GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, mpFlag bool, sqlObjectIds string) error
+	FindDataMigrationExportedPeriod(meteringPointId string, periodFromDate, periodToDate time.Time) (time.Time, bool, error)
+	SetSQLUpdateStatusToRunning(migrationRunId int) error
+	SetSQLUpdateStatusToFinished(migrationRunId int) error
+	SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error
 	Close()
 }
 
@@ -54,13 +54,12 @@ var NewRepository = func(dbConnectionString, logConnectionString string) (Reposi
 	}
 
 	return &Impl{
-		Db: db,
+		Db:    db,
 		LogDB: logDb,
 	}, err
 }
 
-
-func  (i *Impl)  Close() {
+func (i *Impl) Close() {
 	sqlstmtNoTimeSeriesFound.Close()
 	sqlstmtTimeSeriesFound.Close()
 	sqlstmtSelectMasterData.Close()
@@ -75,8 +74,7 @@ func  (i *Impl)  Close() {
 }
 
 type Impl struct {
-	Db, LogDB                 *sql.DB
-
+	Db, LogDB *sql.DB
 }
 
 func (i *Impl) InitProgressTableSQLs() error {
@@ -197,7 +195,7 @@ func (i *Impl) GetMasterData(meteringPointId string, PST *time.Location) ([]mode
 	return masterDataRows, nil
 }
 
-func  checkDataMigrationExportedPeriod(db *sql.DB, periodFromDate time.Time, migrationRunId int) error {
+func checkDataMigrationExportedPeriod(db *sql.DB, periodFromDate time.Time, migrationRunId int) error {
 	rows, err := db.Query(sqls.GetDataMigrationExportedPeriod())
 	if err != nil {
 		log.Error(err)
@@ -320,7 +318,7 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 			log.Error("Something went wrong - ", err)
 			return nil, -1, err
 		} else {
-			log.Debug("No scheduled runs found")
+			log.Debug("No (more) scheduled runs found")
 			return nil, -1, nil
 		}
 	} else { //TODO What to do if there are more than one scheduled run?
@@ -444,20 +442,19 @@ func (i *Impl) FindDataMigrationExportedPeriod(meteringPointId string, periodFro
 
 }
 
-func (i *Impl)  SetSQLUpdateStatusToRunning(migrationRunId int) error {
+func (i *Impl) SetSQLUpdateStatusToRunning(migrationRunId int) error {
 	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToRunning(migrationRunId))
 
 	return err
 }
 
-func (i *Impl)  SetSQLUpdateStatusToFinished(migrationRunId int) error {
+func (i *Impl) SetSQLUpdateStatusToFinished(migrationRunId int) error {
 	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToFinished(migrationRunId))
 
 	return err
 }
 
-
-func (i *Impl)  SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error {
+func (i *Impl) SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error {
 	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToError(migrationRunId, errorMessage))
 
 	return err

@@ -47,9 +47,6 @@ func main() {
 		//Only log in file as the DB is not available
 		log.Fatal(err)
 	} else {
-		//db.SetMaxIdleConns(config.GetMaxIdleConnections())
-		//db.SetMaxOpenConns(config.GetMaxOpenConnections())
-
 		//Check if there is a scheduled run
 		var scheduledRun *models.ScheduledRun
 		if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
@@ -71,20 +68,20 @@ func main() {
 		}
 
 		// Everything OK so far
-		if scheduledRun != nil && err == nil {
+		for scheduledRun != nil && err == nil {
 			//Get the configurations from the file with prefix stored in the DB (field PARAMETER)
 			configurations := config.GetConfig(scheduledRun.Parameter)
 
 			//Setup input parameters from the configurations (some from the DB and some from the configuration file)
-			var nWorkers = flag.Int("workers", scheduledRun.Threads, "Sets the number of workers. Default value is 6.")
-			var sqlFlag = flag.Bool("sqlFlag", scheduledRun.UseListOfMPs, "A flag to decide whether or not the SQL in the configuration file is going to be used.")
-			var sqlItemCount = flag.String("sqlItemCount", configurations.SQL_ITEM_COUNT, "The SQL to fetch the number of items to be migrated.")
-			var sqlItemIds = flag.String("sqlItemIds", configurations.SQL_ITEM_ID, "The SQL to fetch the items to be migrated.")
-			var nWorkload = flag.Int("workload", 1, "Sets the number of items each worker will process per database request. Default value is 5.")
-			var fileLocation = flag.String("location", configurations.FILE_LOCATION, "Where to store the exported JSON logFile.")
-			var numberOfFilesToRename = flag.Int("numberOfFilesToRename", configurations.RENAME_BULK, "How many tmp files to rename to json at once. Default value is 1.")
-			if *numberOfFilesToRename == 0 {
-				*numberOfFilesToRename = 1
+			nWorkers := scheduledRun.Threads                    // The number of workers. Default value is 6.
+			sqlFlag := scheduledRun.UseListOfMPs                // A flag to decide whether or not the SQL in the configuration file is going to be used.
+			sqlItemCount := configurations.SQL_ITEM_COUNT       // The SQL to fetch the number of items to be migrated.
+			sqlItemIds := configurations.SQL_ITEM_ID            // The SQL to fetch the items to be migrated.
+			nWorkload := 1                                      // The number of items each worker will process per database request.
+			fileLocation := configurations.FILE_LOCATION        // Where to store the exported JSON logFile.
+			numberOfFilesToRename := configurations.RENAME_BULK // How many tmp files to rename to json at once. Default value is 1.
+			if numberOfFilesToRename == 0 {
+				numberOfFilesToRename = 1
 			}
 			flag.Parse()
 
@@ -98,13 +95,13 @@ func main() {
 				errorMessage = err.Error()
 			} else {
 				//Cleanup - remove all .tmp files in the out folder before starting the migration
-				err = processor.RemoveFiles(*fileLocation, config.GetTmpExtension())
+				err = processor.RemoveFiles(fileLocation, config.GetTmpExtension())
 				if err != nil {
 					log.Error(err)
 					errorMessage = err.Error()
 				} else {
 					//Call the function that will extract the grid area and write the time series to files in the json format
-					ok, err := processor.MigrateTimeSeries(*nWorkers, *nWorkload, repo, *fileLocation, *sqlFlag, *sqlItemCount, *sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE, numberOfFilesToRename)
+					ok, err := processor.MigrateTimeSeries(nWorkers, nWorkload, repo, fileLocation, sqlFlag, sqlItemCount, sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE, &numberOfFilesToRename)
 					if err != nil {
 						log.Error(err)
 						errorMessage = err.Error()
@@ -122,15 +119,25 @@ func main() {
 					}
 				}
 			}
-		}
-	}
+			//Update status to error
+			if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() && errorMessage != "" && migrationRunId != -1 {
+				log.Debug("Time series are NOT migrated successfully. Updating status in DB.")
+				err := repo.SetSQLUpdateStatusToError(migrationRunId, errorMessage)
+				if err != nil {
+					log.Error(err)
+				}
+			}
+			scheduledRun = nil
 
-	//Update status to error
-	if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() && errorMessage != "" && migrationRunId != -1 {
-		log.Debug("Time series are NOT migrated successfully. Updating status in DB.")
-		err := repo.SetSQLUpdateStatusToError(migrationRunId, errorMessage)
-		if err != nil {
-			log.Error(err)
+			// Check if there are more exports to be done
+			if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
+				scheduledRun, migrationRunId, err = repo.SchedulerWorker()
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else {
+				scheduledRun = nil
+			}
 		}
 	}
 
