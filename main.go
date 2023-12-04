@@ -55,7 +55,7 @@ func main() {
 				log.Fatal(err)
 			}
 		} else {
-			migrationRunId = 118
+			migrationRunId = 119
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId

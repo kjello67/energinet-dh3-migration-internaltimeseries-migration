@@ -30,7 +30,7 @@ func MigrateTimeSeries(nWorkers, nWorkload int, repo repository.Repository, file
 	if err != nil {
 		return false, err
 	}
-	log.Info("Found " + strconv.Itoa(*meteringPointCount) + " metering points to migrate")
+	log.Info("Found " + strconv.Itoa(*meteringPointCount) + " metering points to migrate using " + strconv.Itoa(nWorkers) + " threads")
 
 	//Create the channel that the workers will fetch meteringPoints from
 	meteringPoints := make(chan []string, *meteringPointCount)
