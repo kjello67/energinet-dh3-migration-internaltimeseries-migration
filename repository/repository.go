@@ -116,11 +116,18 @@ func (i *Impl) ExecSqlstmtTimeSeriesFound(migrationRunId int, fromTimeFormatted,
 	mutexProgressTableInserts.Lock()
 	defer mutexProgressTableInserts.Unlock()
 
-	_, err := sqlstmtTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "Y", fileName, fileDetails, strId)
+	tx, err := i.LogDB.Begin()
 	if err != nil {
 		log.Error(err)
 		return err
 	}
+	_, err = sqlstmtTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "Y", fileName, fileDetails, strId)
+	if err != nil {
+		log.Error(err)
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
 
 	return nil
 }
@@ -130,11 +137,19 @@ func (i *Impl) ExecSqlstmtNoTimeSeriesFound(migrationRunId int, fromTimeFormatte
 	mutexProgressTableInserts.Lock()
 	defer mutexProgressTableInserts.Unlock()
 
-	_, err := sqlstmtNoTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "N", fileName, fileDetails, strId)
+	tx, err := i.LogDB.Begin()
 	if err != nil {
 		log.Error(err)
 		return err
 	}
+
+	_, err = sqlstmtNoTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "N", fileName, fileDetails, strId)
+	if err != nil {
+		log.Error(err)
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
 
 	return nil
 }

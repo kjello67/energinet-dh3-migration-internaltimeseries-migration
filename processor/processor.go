@@ -129,7 +129,6 @@ func TimeSeriesWorker(repo repository.Repository, items <-chan []string, runTo t
 	fromTime, _ := time.Parse(config.GetExportDateLayout(), fromTimeFormatted)
 	toTime, _ := time.Parse(config.GetExportDateLayout(), toTimeFormatted)
 
-
 	//For each metering point read from the metering points channel
 	for itemSlice := range items {
 		for _, itemId := range itemSlice {
@@ -346,7 +345,13 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 				return data, nil, true, err
 			}
 
-			validFromDateNoTimeZone, _ := time.Parse(config.GetExportDateLayout(), validFromDate.Time.Format(config.GetExportDateLayout()))
+			validFromDateNoTimeZone, err := time.Parse(config.GetExportDateLayout(), validFromDate.Time.Format(config.GetExportDateLayout()))
+			if err != nil {
+				log.Error(err)
+				return data, nil, false, err
+			}
+
+
 //			validToDateNoTimeZone, _ := time.Parse(config.GetJSONDateLayoutLong(), validToDateFormatted)
 
 /*			if timeSeriesValue.Position > position || (timeSeriesData.HistoricalFlag != "" && timeSeriesData.HistoricalFlag != historicalFlag) {
@@ -366,15 +371,28 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 				valueDetails := strings.Split(s, "|")
 				intResolution, _ := strconv.Atoi(resolution)
 				if len(valueDetails) >= 3 {
-					readingTime, _ = time.Parse(config.GetExportDateLayout(), valueDetails[0])
 					if  intResolution == 15 || intResolution == 60 {
+						readingTime, err = time.Parse(config.GetExportDateLayout(), valueDetails[0])
+						if err != nil {
+							log.Error(err)
+							return data, nil, false, err
+						}
 						duration := readingTime.Sub(validFromDateNoTimeZone)
 						position = int(duration.Minutes()) / intResolution + 1
 					} else { // monthly timeseries
-						position, _ = strconv.Atoi(valueDetails[0])
+						position, err = strconv.Atoi(valueDetails[0])
+						if err != nil {
+							log.Error(err)
+							return data, nil, false, err
+						}
 					}
 
-					quantity, _ = strconv.ParseFloat(strings.ReplaceAll(valueDetails[1], ",", "."), 64)
+					quantity, err = strconv.ParseFloat(strings.ReplaceAll(valueDetails[1], ",", "."), 64)
+
+					if  err != nil {
+						log.Error(meteringPointId + ": ", err)
+					}
+
 					quality = valueDetails[2]
 					timeSeriesValue.Position = position
 
