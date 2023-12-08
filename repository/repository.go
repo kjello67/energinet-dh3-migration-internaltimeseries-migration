@@ -314,7 +314,6 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 
 		scheduledRun.Threads = threads
 		scheduledRun.MigrationDueDate = migrationDueDateFormatted
-		scheduledRun.Parameter = parameter
 		scheduledRun.MigrationRunId = migrationRunId
 		scheduledRun.UseListOfMPs = useListOfMPs
 		scheduledRun.PeriodFromDate = periodFromDate

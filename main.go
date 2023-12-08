@@ -70,9 +70,6 @@ func main() {
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
 			scheduledRun.Threads = 1
-			scheduledRun.Parameter = "PRE07"
-			//scheduledRun.PeriodFromDate = time.Date(2015, 04, 30, 22, 0, 0, 0, time.UTC)
-			//scheduledRun.PeriodToDate = time.Date(2015, 05, 31, 22, 0, 0, 0, time.UTC)
 			scheduledRun.PeriodFromDate = time.Date(2015, 12, 31, 23, 0, 0, 0, time.UTC)
 			scheduledRun.PeriodToDate = time.Date(2023, 10, 20, 00, 0, 0, 0, time.UTC)
 		}
@@ -80,7 +77,7 @@ func main() {
 		// Everything OK so far
 		for scheduledRun != nil && err == nil {
 			//Get the configurations from the file with prefix stored in the DB (field PARAMETER)
-			configurations := config.GetConfig(scheduledRun.Parameter)
+			configurations := config.GetConfig(environment)
 
 			//Setup input parameters from the configurations (some from the DB and some from the configuration file)
 			nWorkers := scheduledRun.Threads                    // The number of workers. Default value is 6.

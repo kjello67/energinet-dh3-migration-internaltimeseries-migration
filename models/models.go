@@ -5,7 +5,6 @@ import "time"
 //ScheduledRun defines the scheduled run stored in the DB table
 type ScheduledRun struct {
 	MigrationRunId   int
-	Parameter        string
 	Threads          int
 	MigrationDueDate string
 	UseListOfMPs     bool
