@@ -17,9 +17,13 @@ var (
 	sha1ver   string // sha1 revision used to build the program
 	buildTime string // when the executable was built
 	version   string // custom version number of the program
+
+	flgVersion bool
 )
 
 func main() {
+
+	parseCmdLineFlags()
 
 	//Store the current time before running the program in order to track execution time
 	timer := time.Now()
@@ -74,6 +78,7 @@ func main() {
 			scheduledRun.PeriodToDate = time.Date(2023, 10, 20, 00, 0, 0, 0, time.UTC)
 		}
 
+		statusOfPrevRun := config.GetStatusFinished()
 		// Everything OK so far
 		for scheduledRun != nil && err == nil {
 			//Get the configurations from the file with prefix stored in the DB (field PARAMETER)
@@ -95,6 +100,7 @@ func main() {
 			//Update the status to running
 			if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
 				err = repo.SetSQLUpdateStatusToRunning(scheduledRun.MigrationRunId)
+				statusOfPrevRun = config.GetStatusRunning()
 			}
 
 			if err != nil {
@@ -122,6 +128,7 @@ func main() {
 								log.Error(err)
 								errorMessage = err.Error()
 							}
+							statusOfPrevRun = config.GetStatusFinished()
 						}
 					}
 				}
@@ -133,17 +140,22 @@ func main() {
 				if err != nil {
 					log.Error(err)
 				}
+				statusOfPrevRun = config.GetStatusError()
 			}
 			scheduledRun = nil
 
-			// Check if there are more exports to be done
-			if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
-				scheduledRun, migrationRunId, err = repo.SchedulerWorker()
-				if err != nil {
-					log.Fatal(err)
+			if statusOfPrevRun == config.GetStatusFinished() {
+				time.Sleep(2 * time.Second)
+
+				// Check if there are more exports to be done
+				if !DBConfigurations.SKIP_DB_UPDATE && config.GetScheduledRunFromMigrationTable() {
+					scheduledRun, migrationRunId, err = repo.SchedulerWorker()
+					if err != nil {
+						log.Fatal(err)
+					}
+				} else {
+					scheduledRun = nil
 				}
-			} else {
-				scheduledRun = nil
 			}
 		}
 	}
@@ -229,4 +241,13 @@ func initLogger() *os.File {
 	}
 
 	return logFile
+}
+
+func parseCmdLineFlags() {
+	flag.BoolVar(&flgVersion, "version", false, "if true, print version and exit")
+	flag.Parse()
+	if flgVersion {
+		fmt.Printf("Version %s - build on %s from sha1 %s\n", version, buildTime, sha1ver)
+		os.Exit(0)
+	}
 }
