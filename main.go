@@ -13,6 +13,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var (
+	sha1ver   string // sha1 revision used to build the program
+	buildTime string // when the executable was built
+	version   string // custom version number of the program
+)
+
 func main() {
 
 	//Store the current time before running the program in order to track execution time
@@ -20,6 +26,10 @@ func main() {
 
 	// Create the log file if it doesn't exist. Append to it if it already exists.
 	logFile := initLogger()
+
+	log.Info("version = ", version)
+	log.Info("buildTime = ", buildTime)
+	log.Info("sha1Version = ", sha1ver)
 
 	//The environment is given as a parameter (defaults to PROD)
 	environment := getEnvironment()
