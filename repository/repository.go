@@ -458,19 +458,52 @@ func (i *Impl) FindDataMigrationExportedPeriod(meteringPointId string, periodFro
 }
 
 func (i *Impl) SetSQLUpdateStatusToRunning(migrationRunId int) error {
-	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToRunning(migrationRunId))
+	tx, err := i.LogDB.Begin()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	_, err = i.LogDB.Exec(sqls.GetSQLUpdateStatusToRunning(migrationRunId))
+	if err != nil {
+		log.Error(err)
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
 
-	return err
+	return nil
 }
 
 func (i *Impl) SetSQLUpdateStatusToFinished(migrationRunId int) error {
-	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToFinished(migrationRunId))
+	tx, err := i.LogDB.Begin()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	_, err = i.LogDB.Exec(sqls.GetSQLUpdateStatusToFinished(migrationRunId))
+	if err != nil {
+		log.Error(err)
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
 
-	return err
+	return nil
 }
 
 func (i *Impl) SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error {
-	_, err := i.LogDB.Exec(sqls.GetSQLUpdateStatusToError(migrationRunId, errorMessage))
+	tx, err := i.LogDB.Begin()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	_, err = i.LogDB.Exec(sqls.GetSQLUpdateStatusToError(migrationRunId, errorMessage))
+	if err != nil {
+		log.Error(err)
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
 
-	return err
+	return nil
 }
