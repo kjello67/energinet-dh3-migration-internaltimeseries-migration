@@ -1,4 +1,4 @@
-$version = "1.0.0"
+$version = "1.0.1"
 $now = Get-Date -UFormat "%d-%m-%Y_%T"
 $sha1 = (git rev-parse HEAD).Trim()
 

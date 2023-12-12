@@ -255,7 +255,7 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 	var scheduledRuns []models.ScheduledRun
 
 	//Check if there exists any scheduled runs
-	rows, err := i.Db.Query(sqls.GetSQLSelectNewRuns())
+	rows, err := i.LogDB.Query(sqls.GetSQLSelectNewRuns())
 	if err != nil {
 		log.Error(err)
 		return nil, -1, err
@@ -299,7 +299,7 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 			migrationDueDateFormatted = ""
 		}
 
-		err := checkDataMigrationExportedPeriod(i.Db, periodFromDate, migrationRunId)
+		err := checkDataMigrationExportedPeriod(i.LogDB, periodFromDate, migrationRunId)
 
 		if err != nil {
 			return nil, migrationRunId, err
@@ -419,7 +419,7 @@ func (i *Impl) GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, 
 func (i *Impl) FindDataMigrationExportedPeriod(meteringPointId string, periodFromDate, periodToDate time.Time) (time.Time, bool, error) {
 	//Prepare the SQL query that inserts to the progress table
 	migrate := true
-	rows, err := i.Db.Query(sqls.GetDataMigrationExportedPeriodForMp(meteringPointId))
+	rows, err := i.LogDB.Query(sqls.GetDataMigrationExportedPeriodForMp(meteringPointId))
 	if err != nil {
 		log.Error(err)
 		return periodFromDate, false, err

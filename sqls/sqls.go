@@ -287,7 +287,7 @@ func GetSQLSelectNewRuns() string {
             and e.MIGRATION_DOMAIN = 'TimeSeries'
 			and MIGRATION_DUE_DATE < sys_extract_utc(systimestamp)
 			and not exists (select 1 from DMDH3_OWN.DATAMIGRATION_EXPORT de where de.MIGRATION_DOMAIN = e.MIGRATION_DOMAIN and de.MIGRATION_STATUS = 'RUN')
-			order by THREADS, PERIOD_FROM_DATE
+			order by PERIOD_FROM_DATE
 			) where rownum <= 1`
 }
 
