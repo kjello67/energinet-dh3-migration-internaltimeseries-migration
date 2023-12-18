@@ -2,12 +2,14 @@ package utils
 
 import (
 	"database/sql"
-	log "github.com/sirupsen/logrus"
+	"runtime"
+	"strconv"
 	"time"
 	"timeseries-migration/config"
+	"timeseries-migration/logger"
 )
 
-func FormatDate(PST *time.Location, nullTime NullTime, resolution string) (string, error) {
+func FormatDate(PST *time.Location, nullTime NullTime, resolution string, logFileLogger *logger.Logger) (string, error) {
 	//Format the dates to ISO 8601 (RFC-3339)
 	var dateFormatted string
 	if nullTime.Valid {
@@ -20,7 +22,7 @@ func FormatDate(PST *time.Location, nullTime NullTime, resolution string) (strin
 		}
 		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), dateFormatted, PST)
 		if err != nil {
-			log.Error(err)
+			(*logFileLogger).Error(err)
 			return "", err
 		}
 		dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
@@ -30,14 +32,14 @@ func FormatDate(PST *time.Location, nullTime NullTime, resolution string) (strin
 	return dateFormatted, nil
 }
 
-func FormatDatePointer(PST *time.Location, nullTime NullTime) (*string, error) {
+func FormatDatePointer(PST *time.Location, nullTime NullTime, logFileLogger *logger.Logger) (*string, error) {
 	//Format the dates to ISO 8601 (RFC-3339)
 	var dateFormatted string
 	if nullTime.Valid {
 		dateFormatted = nullTime.Time.Format(config.GetJSONDateLayoutLong())
 		t, err := time.ParseInLocation(config.GetJSONDateLayoutLong(), dateFormatted, PST)
 		if err != nil {
-			log.Error(err)
+			(*logFileLogger).Error(err)
 			return nil, err
 		}
 		dateFormatted = t.UTC().Format(config.GetJSONDateLayoutLong())
@@ -46,6 +48,7 @@ func FormatDatePointer(PST *time.Location, nullTime NullTime) (*string, error) {
 		return nil, nil
 	}
 }
+
 type NullTime struct {
 	sql.NullTime
 }
@@ -62,33 +65,12 @@ type NullFloat struct {
 	sql.NullFloat64
 }
 
-func bool2intstring(b bool) string {
-	if b {
-		return "1"
-	}
-	return "0"
-}
-
-func formatNullStringPointer(nullString NullString) *string {
-	var formattedString *string
-	if nullString.Valid {
-		if nullString.String == "" {
-			formattedString = nil
-		} else {
-			formattedString = &nullString.String
-		}
-	} else {
-		formattedString = nil
-	}
-	return formattedString
-}
-
-func formatNullFloat(nullFloat NullFloat) float64 {
-	var formattedString float64
-	if nullFloat.Valid {
-		formattedString = nullFloat.Float64
-	} else {
-		formattedString = -1
-	}
-	return formattedString
+func PrintMemUsage(logFileLogger *logger.Logger) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	(*logFileLogger).Info("Memory usage: " +
+		"Alloc = " + strconv.Itoa(int(m.Alloc/1024/1024)) + " MiB, " +
+		"TotalAlloc = " + strconv.Itoa(int(m.TotalAlloc/1024/1024)) + " MiB, " +
+		"Sys = " + strconv.Itoa(int(m.Sys/1024/1024)) + " MiB, " +
+		"NumGC = " + strconv.Itoa(int(m.NumGC)))
 }

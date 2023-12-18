@@ -2,31 +2,31 @@ package config
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/tkanos/gonfig"
 )
 
 type Configuration struct {
-	DB_USERNAME    string
-	DB_PASSWORD    string
-	DB_PORT        string
-	DB_ALIAS       string
-	DB_SID         string
-	DB_HOST        string
-	LOG_USERNAME   string
-	LOG_PASSWORD   string
-	LOG_PORT       string
-	LOG_ALIAS      string
-	LOG_SID        string
-	LOG_HOST       string
-	DEBUG_LOGGING  bool
-	SKIP_DB_UPDATE bool
-	FILE_LOCATION  string
-	SQL_ITEM_COUNT string
-	SQL_ITEM_ID    string
-	FROM_DATE      string
-	TO_DATE        string
-	RENAME_BULK    int
+	DB_USERNAME      string
+	DB_PASSWORD      string
+	DB_PORT          string
+	DB_ALIAS         string
+	DB_SID           string
+	DB_HOST          string
+	LOG_USERNAME     string
+	LOG_PASSWORD     string
+	LOG_PORT         string
+	LOG_ALIAS        string
+	LOG_SID          string
+	LOG_HOST         string
+	DEBUG_LOGGING    bool
+	SKIP_DB_UPDATE   bool
+	FILE_LOCATION    string
+	SQL_ITEM_COUNT   string
+	SQL_ITEM_ID      string
+	FROM_DATE        string
+	TO_DATE          string
+	RENAME_BULK      int
+	MAX_LOGFILE_SIZE int64
 }
 
 func GetConfig(params ...string) Configuration {
@@ -36,10 +36,7 @@ func GetConfig(params ...string) Configuration {
 		env = params[0]
 	}
 	fileName := fmt.Sprintf("./%s_ts_config.json", env)
-
 	gonfig.GetConf(fileName, &configuration)
-
-	log.Info("Using configurations in config file with prefix: ", env)
 
 	return configuration
 }
@@ -52,8 +49,6 @@ func GetConfigDB(params ...string) Configuration {
 	}
 	fileName := fmt.Sprintf("./%s_config_db.json", env)
 	gonfig.GetConf(fileName, &configuration)
-
-	log.Info("Using DB configurations for environment:  ", env)
 
 	return configuration
 }
@@ -156,6 +151,16 @@ func GetMigrationDetailsWhenFinished() string {
 //GetLogFileName return the name of the log file
 func GetLogFileName() string {
 	return "./out/timeseries-migration.log"
+}
+
+//GetLogFileNameWithoutExtension return the name of the log file
+func GetLogFileNameWithoutExtension() string {
+	return "./out/timeseries-migration"
+}
+
+//GetLogFileExtension return the name of the log file
+func GetLogFileExtension() string {
+	return "log"
 }
 
 //GetDefaultEnvironment returns the default environment to check for scheduled migration runs

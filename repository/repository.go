@@ -9,13 +9,16 @@ import (
 	"time"
 	"timeseries-migration/config"
 	"timeseries-migration/database"
+	"timeseries-migration/logger"
 	"timeseries-migration/models"
 	"timeseries-migration/sqls"
 	"timeseries-migration/utils"
 )
 
-var sqlstmtNoTimeSeriesFound, sqlstmtTimeSeriesFound, sqlstmtSelectMasterData, sqlstmtSelectTimesSeries *sql.Stmt
-var mutexProgressTableInserts sync.Mutex
+var (
+	sqlstmtNoTimeSeriesFound, sqlstmtTimeSeriesFound, sqlstmtSelectMasterData, sqlstmtSelectTimesSeries *sql.Stmt
+	mutexProgressTableInserts                                                                           sync.Mutex
+)
 
 type Repository interface {
 	InitProgressTableSQLs() error
@@ -30,32 +33,32 @@ type Repository interface {
 	SetSQLUpdateStatusToRunning(migrationRunId int) error
 	SetSQLUpdateStatusToFinished(migrationRunId int) error
 	SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error
+	GetLogger() *logger.Logger
 	Close()
 }
 
-var NewRepository = func(dbConnectionString, logConnectionString string) (Repository, error) {
+var NewRepository = func(dbConnectionString, logConnectionString string, logFileLogger *logger.Logger) (Repository, error) {
 	//Open connection to the database from where the data should be retrieved
-	db, err := database.InitDB(dbConnectionString)
+	db, err := database.InitDB(dbConnectionString, logFileLogger)
 	if err != nil {
 		//Only log in file as the DB is not available
-		log.Fatal(err)
+		(*logFileLogger).Fatal(err)
 	}
 
 	//By default, data should be retrieved from same database as logging is done
 	logDb := db
 	if dbConnectionString != logConnectionString {
 		//Open connection to the database where the logging should be done if different from data DB
-		logDb, err = database.InitDB(logConnectionString)
+		logDb, err = database.InitDB(logConnectionString, logFileLogger)
 		if err != nil {
-			log.Fatal(err)
+			(*logFileLogger).Fatal(err)
 		}
-		//logDb.SetMaxIdleConns(config.GetMaxIdleConnections())
-		//logDb.SetMaxOpenConns(config.GetMaxOpenConnections())
 	}
 
 	return &Impl{
-		Db:    db,
-		LogDB: logDb,
+		Db:            db,
+		LogDB:         logDb,
+		LogFileLogger: logFileLogger,
 	}, err
 }
 
@@ -70,11 +73,15 @@ func (i *Impl) Close() {
 	if i.Db != i.LogDB {
 		i.LogDB.Close()
 	}
-
 }
 
 type Impl struct {
-	Db, LogDB *sql.DB
+	Db, LogDB     *sql.DB
+	LogFileLogger *logger.Logger
+}
+
+func (i *Impl) GetLogger() *logger.Logger {
+	return i.LogFileLogger
 }
 
 func (i *Impl) InitProgressTableSQLs() error {
@@ -83,28 +90,28 @@ func (i *Impl) InitProgressTableSQLs() error {
 	//Prepare the SQL query that inserts to the progress table
 	sqlstmtNoTimeSeriesFound, err = i.LogDB.Prepare(sqls.GetSQLInsertNoDataFound())
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 
 	//Prepare the SQL query that inserts to the progress table
 	sqlstmtTimeSeriesFound, err = i.LogDB.Prepare(sqls.GetSQLInsertFinishedTimeSeriesExportFile())
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 
 	//Prepare the SQL query that retrieves the time series
 	sqlstmtSelectMasterData, err = i.Db.Prepare(sqls.GetSQLSelectMasterData())
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 
 	//Prepare the SQL query that retrieves the time series
 	sqlstmtSelectTimesSeries, err = i.Db.Prepare(sqls.GetSQLSelectData())
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 
@@ -118,49 +125,65 @@ func (i *Impl) ExecSqlstmtTimeSeriesFound(migrationRunId int, fromTimeFormatted,
 
 	tx, err := i.LogDB.Begin()
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 	_, err = sqlstmtTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "Y", fileName, fileDetails, strId)
 	if err != nil {
-		log.Error(err)
-		tx.Rollback()
+		(*i.LogFileLogger).Error(err)
+		err = tx.Rollback()
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return err
+		}
 		return err
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
 
 	return nil
 }
 
-// ExecSqlstmtNoTimeSeriesFound un SQL statement for setting into database information about that no timeseries was found for the metering point
+// ExecSqlstmtNoTimeSeriesFound un SQL statement for setting into database information about that no time series was found for the metering point
 func (i *Impl) ExecSqlstmtNoTimeSeriesFound(migrationRunId int, fromTimeFormatted, toTimeFormatted, fileName, fileDetails, strId string) error {
 	mutexProgressTableInserts.Lock()
 	defer mutexProgressTableInserts.Unlock()
 
 	tx, err := i.LogDB.Begin()
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 
 	_, err = sqlstmtNoTimeSeriesFound.Exec(migrationRunId, fromTimeFormatted, toTimeFormatted, "N", fileName, fileDetails, strId)
 	if err != nil {
-		log.Error(err)
-		tx.Rollback()
+		(*i.LogFileLogger).Error(err)
+		err = tx.Rollback()
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return err
+		}
 		return err
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
 
 	return nil
 }
 
-// ExecSqlstmtSelectTimesSeries Run SQL for getting timeseries for a meteringpoint
+// ExecSqlstmtSelectTimesSeries Run SQL for getting time series for a metering point
 func (i *Impl) ExecSqlstmtSelectTimesSeries(meteringPointId string, processedFromTime, processedUntilTime time.Time) (*sql.Rows, error) {
 
 	rows, err := sqlstmtSelectTimesSeries.Query(meteringPointId, processedFromTime, processedUntilTime)
 
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return nil, err
 	}
 
@@ -179,7 +202,7 @@ func (i *Impl) GetMasterData(meteringPointId string, PST *time.Location) ([]mode
 	//Run the prepared SQL query that retrieves the time series
 	rows, err := sqlstmtSelectMasterData.Query(meteringPointId)
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -191,14 +214,14 @@ func (i *Impl) GetMasterData(meteringPointId string, PST *time.Location) ([]mode
 		rows.Scan(
 			&meteringPointId, &gridArea, &typeOfMP, &validFromDate, &validToDate)
 
-		validFromDateFormatted, err = utils.FormatDate(PST, validFromDate, "")
+		validFromDateFormatted, err = utils.FormatDate(PST, validFromDate, "", i.LogFileLogger)
 		if err != nil {
-			log.Error(err)
+			(*i.LogFileLogger).Error(err)
 			return masterDataRows, err
 		}
-		validToDateFormatted, err = utils.FormatDatePointer(PST, validToDate)
+		validToDateFormatted, err = utils.FormatDatePointer(PST, validToDate, i.LogFileLogger)
 		if err != nil {
-			log.Error(err)
+			(*i.LogFileLogger).Error(err)
 			return masterDataRows, err
 		}
 		masterDataRow.GridArea = gridArea
@@ -250,14 +273,14 @@ func checkDataMigrationExportedPeriod(db *sql.DB, periodFromDate time.Time, migr
 //SchedulerWorker reads the DB to see if there are any scheduled migration runs
 func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 
-	timer := time.Now()
+	//timer := time.Now()
 
 	var scheduledRuns []models.ScheduledRun
 
 	//Check if there exists any scheduled runs
 	rows, err := i.LogDB.Query(sqls.GetSQLSelectNewRuns())
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return nil, -1, err
 	}
 	defer rows.Close()
@@ -272,7 +295,7 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 
 	PST, err := time.LoadLocation(config.GetTimeLocation())
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return nil, -1, err
 	}
 
@@ -290,7 +313,7 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 			migrationDueDateFormatted = migrationDueDate.Time.Format(config.GetJSONDateLayoutShort())
 			t, err := time.ParseInLocation(config.GetJSONDateLayoutShort(), migrationDueDateFormatted, PST)
 			if err != nil {
-				log.Error(err)
+				(*i.LogFileLogger).Error(err)
 				return nil, migrationRunId, err
 			}
 
@@ -308,7 +331,7 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 		if parameter == "" {
 			errorText := "DB column PARAMETER is mandatory"
 			err = errors.New(errorText)
-			log.Error(errorText + " - migration run aborted")
+			(*i.LogFileLogger).ErrorWithText(errorText + " - migration run aborted")
 			return nil, migrationRunId, err
 		}
 
@@ -321,22 +344,20 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 		scheduledRuns = append(scheduledRuns, scheduledRun)
 	}
 
-	log.Info("Time since SchedulerWorker started: ", time.Since(timer))
-
 	if len(scheduledRuns) == 1 {
 		//If all other statuses != "RUN" -> continue
 		return &scheduledRuns[0], migrationRunId, nil //TODO Verify that it's correct to expect only one scheduled run
 	} else if len(scheduledRuns) == 0 {
 		if err != nil {
 			//log in file why the export is not started
-			log.Error("Something went wrong - ", err)
+			(*i.LogFileLogger).ErrorWithText("Something went wrong - " + err.Error())
 			return nil, -1, err
 		} else {
-			log.Debug("No (more) scheduled runs found")
+			(*i.LogFileLogger).Debug("No (more) scheduled runs found")
 			return nil, -1, nil
 		}
 	} else { //TODO What to do if there are more than one scheduled run?
-		log.Debug("Too many scheduled runs found")
+		(*i.LogFileLogger).Debug("Too many scheduled runs found")
 		return nil, -1, nil
 	}
 }
@@ -354,7 +375,7 @@ func (i *Impl) GetNumberOfMeteringPoints(sqlFlag bool, sqlCount string) (*int, e
 
 	err := i.Db.QueryRow(query).Scan(&meteringPointCount)
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return nil, err
 	}
 
@@ -378,7 +399,7 @@ func (i *Impl) GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, 
 	//Run the prepared SQL statement
 	rows, err := i.Db.Query(query)
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 	defer rows.Close()
@@ -390,7 +411,7 @@ func (i *Impl) GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, 
 		//Fetch the current metering points into the objectId variable
 		err := rows.Scan(&objectId)
 		if err != nil {
-			log.Error(err)
+			(*i.LogFileLogger).Error(err)
 			return err
 		}
 
@@ -404,7 +425,7 @@ func (i *Impl) GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, 
 		}
 	}
 	if err = rows.Err(); err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 
@@ -421,7 +442,7 @@ func (i *Impl) FindDataMigrationExportedPeriod(meteringPointId string, periodFro
 	migrate := true
 	rows, err := i.LogDB.Query(sqls.GetDataMigrationExportedPeriodForMp(meteringPointId))
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return periodFromDate, false, err
 	}
 	defer rows.Close()
@@ -459,16 +480,24 @@ func (i *Impl) FindDataMigrationExportedPeriod(meteringPointId string, periodFro
 func (i *Impl) SetSQLUpdateStatusToRunning(migrationRunId int) error {
 	tx, err := i.LogDB.Begin()
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 	_, err = i.LogDB.Exec(sqls.GetSQLUpdateStatusToRunning(migrationRunId))
 	if err != nil {
-		log.Error(err)
-		tx.Rollback()
+		(*i.LogFileLogger).Error(err)
+		err = tx.Rollback()
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return err
+		}
 		return err
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
 
 	return nil
 }
@@ -476,16 +505,24 @@ func (i *Impl) SetSQLUpdateStatusToRunning(migrationRunId int) error {
 func (i *Impl) SetSQLUpdateStatusToFinished(migrationRunId int) error {
 	tx, err := i.LogDB.Begin()
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 	_, err = i.LogDB.Exec(sqls.GetSQLUpdateStatusToFinished(migrationRunId))
 	if err != nil {
-		log.Error(err)
-		tx.Rollback()
+		(*i.LogFileLogger).Error(err)
+		err = tx.Rollback()
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return err
+		}
 		return err
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
 
 	return nil
 }
@@ -493,16 +530,24 @@ func (i *Impl) SetSQLUpdateStatusToFinished(migrationRunId int) error {
 func (i *Impl) SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error {
 	tx, err := i.LogDB.Begin()
 	if err != nil {
-		log.Error(err)
+		(*i.LogFileLogger).Error(err)
 		return err
 	}
 	_, err = i.LogDB.Exec(sqls.GetSQLUpdateStatusToError(migrationRunId, errorMessage))
 	if err != nil {
-		log.Error(err)
-		tx.Rollback()
+		(*i.LogFileLogger).Error(err)
+		err = tx.Rollback()
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return err
+		}
 		return err
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
 
 	return nil
 }
