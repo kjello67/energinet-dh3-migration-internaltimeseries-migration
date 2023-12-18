@@ -231,7 +231,7 @@ func GetSQLInsertNoDataFound() string {
 func GetSQLUpdateStatusToRunning(migrationRunId int) string {
 	return " update " + config.GetExportTableName() +
 		" set MIGRATION_STATUS = '" + config.GetStatusRunning() + "' " +
-		" , MIGRATION_START_DATE = sysdate " +
+		" , MIGRATION_START_DATE = sys_extract_utc(systimestamp) " +
 		" , MIGRATION_LOG_DETAILS = '" + config.GetMigrationDetailsWhenRunning() + "' " +
 		" where MIGRATION_DOMAIN = '" + config.GetDomain() + "'" +
 		" and MIGRATION_STATUS = '" + config.GetStatusNew() + "'" +
@@ -242,7 +242,7 @@ func GetSQLUpdateStatusToRunning(migrationRunId int) string {
 func GetSQLUpdateStatusToFinished(migrationRunId int) string {
 	return " update " + config.GetExportTableName() +
 		" set MIGRATION_STATUS = '" + config.GetStatusFinished() + "' " +
-		" , MIGRATION_FINISH_DATE = sysdate " +
+		" , MIGRATION_FINISH_DATE = sys_extract_utc(systimestamp) " +
 		" , MIGRATION_LOG_DETAILS = '" + config.GetMigrationDetailsWhenFinished() + "' " +
 		" where MIGRATION_DOMAIN = '" + config.GetDomain() + "'" +
 		" and MIGRATION_STATUS = '" + config.GetStatusRunning() + "'" +
