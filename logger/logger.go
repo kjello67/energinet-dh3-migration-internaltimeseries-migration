@@ -174,5 +174,5 @@ func (i *Impl) logFileIsTooLarge() bool {
 
 func (i *Impl) Close() {
 	//Don't forget to close the log file
-	defer i.LogFile.Close()
+	i.LogFile.Close()
 }

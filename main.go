@@ -38,6 +38,7 @@ func main() {
 
 	// Create the log file if it doesn't exist. Append to it if it already exists.
 	logFileLogger, err := logger.NewLogger(configurations.MAX_LOGFILE_SIZE)
+	defer logFileLogger.Close()
 
 	if configurations.DEBUG_LOGGING {
 		log.SetLevel(log.DebugLevel)
@@ -65,8 +66,8 @@ func main() {
 	var logConnectionString = flag.String("logDb", connectionStringLog, "Database connection string to the log server.")
 
 	repo, err := repository.NewRepository(*dbConnectionString, *logConnectionString, &logFileLogger)
-	repo.InitProgressTableSQLs()
 	defer repo.Close()
+	repo.InitProgressTableSQLs()
 	if err != nil {
 		//Only log in file as the DB is not available
 		logFileLogger.Fatal(err)
