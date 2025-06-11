@@ -2,7 +2,7 @@ package database
 
 import (
 	"database/sql"
-	"timeseries-migration/logger"
+	"internaltimeseries-migration/logger"
 
 	_ "github.com/godror/godror"
 )

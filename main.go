@@ -4,15 +4,15 @@ import (
 	"flag"
 	"fmt"
 	log "github.com/sirupsen/logrus"
+	"internaltimeseries-migration/config"
+	"internaltimeseries-migration/logger"
+	"internaltimeseries-migration/models"
+	"internaltimeseries-migration/processor"
+	"internaltimeseries-migration/repository"
+	"internaltimeseries-migration/utils"
 	"os"
 	"strconv"
 	"time"
-	"timeseries-migration/config"
-	"timeseries-migration/logger"
-	"timeseries-migration/models"
-	"timeseries-migration/processor"
-	"timeseries-migration/repository"
-	"timeseries-migration/utils"
 )
 
 var (
@@ -80,13 +80,13 @@ func main() {
 				logFileLogger.Fatal(err)
 			}
 		} else {
-			migrationRunId = 119
+			migrationRunId = 833
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
 			scheduledRun.Threads = 1
-			scheduledRun.PeriodFromDate = time.Date(2015, 12, 31, 23, 0, 0, 0, time.UTC)
-			scheduledRun.PeriodToDate = time.Date(2023, 10, 20, 00, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodFromDate = time.Date(2024, 12, 31, 23, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodToDate = time.Date(2025, 06, 01, 0, 0, 0, 0, time.UTC)
 		}
 
 		statusOfPrevRun := config.GetStatusFinished()

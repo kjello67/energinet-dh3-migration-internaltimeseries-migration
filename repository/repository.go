@@ -3,21 +3,25 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"internaltimeseries-migration/config"
+	"internaltimeseries-migration/database"
+	"internaltimeseries-migration/logger"
+	"internaltimeseries-migration/models"
+	"internaltimeseries-migration/sqls"
+	"internaltimeseries-migration/utils"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
-	"timeseries-migration/config"
-	"timeseries-migration/database"
-	"timeseries-migration/logger"
-	"timeseries-migration/models"
-	"timeseries-migration/sqls"
-	"timeseries-migration/utils"
 )
 
 var (
 	sqlstmtNoTimeSeriesFound, sqlstmtTimeSeriesFound, sqlstmtSelectMasterData, sqlstmtSelectTimesSeries *sql.Stmt
-	mutexProgressTableInserts                                                                           sync.Mutex
+	sqlStmtInsertSerieMessage, sqlStmtInsertSerieCounter                                                *sql.Stmt
+	sqlStmtInsertSerieValue, sqlStmtInsertRecipient                                                     *sql.Stmt
+	mutexProgressTableInserts, mutexRSM012Inserts                                                       sync.Mutex
 )
 
 type Repository interface {
@@ -35,6 +39,13 @@ type Repository interface {
 	SetSQLUpdateStatusToError(migrationRunId int, errorMessage string) error
 	GetLogger() *logger.Logger
 	Close()
+	FindNextRSM012MessageSeqNo() (int, error)
+	FindMeteringPointInfo(meteringpointId string) (int, string, string, error)
+	FindSettlementMethodType(meteringpointSeqNo int, fromTimeStr string) (string, error)
+	FindBreakRules() ([]string, error)
+	CreateRSM012MessageCounter(messageSeqNo int, unit, resolution string, sumSeries int) error
+	CreateRSM012MessageValues(messageSeqNo int, data models.TimeSeriesData) error
+	CreateRSM012Message(data models.Data) error
 }
 
 var NewRepository = func(dbConnectionString, logConnectionString string, logFileLogger *logger.Logger) (Repository, error) {
@@ -67,6 +78,10 @@ func (i *Impl) Close() {
 	sqlstmtTimeSeriesFound.Close()
 	sqlstmtSelectMasterData.Close()
 	sqlstmtSelectTimesSeries.Close()
+	sqlStmtInsertSerieMessage.Close()
+	sqlStmtInsertSerieCounter.Close()
+	sqlStmtInsertSerieValue.Close()
+	sqlStmtInsertRecipient.Close()
 
 	i.Db.Close()
 
@@ -110,6 +125,30 @@ func (i *Impl) InitProgressTableSQLs() error {
 
 	//Prepare the SQL query that retrieves the time series
 	sqlstmtSelectTimesSeries, err = i.Db.Prepare(sqls.GetSQLSelectData())
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
+
+	sqlStmtInsertSerieMessage, err = i.LogDB.Prepare(sqls.GetSQLInsertSerieMessage())
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
+
+	sqlStmtInsertSerieCounter, err = i.LogDB.Prepare(sqls.GetSQLInsertSerieCounter())
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
+
+	sqlStmtInsertSerieValue, err = i.LogDB.Prepare(sqls.GetSQLInsertSerieValue())
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
+
+	sqlStmtInsertRecipient, err = i.LogDB.Prepare(sqls.GetSQLInsertRecipient())
 	if err != nil {
 		(*i.LogFileLogger).Error(err)
 		return err
@@ -195,9 +234,7 @@ func (i *Impl) GetMasterData(meteringPointId string, PST *time.Location) ([]mode
 
 	var masterDataRows []models.Masterdata
 	var masterDataRow models.Masterdata
-	var gridArea, typeOfMP, validFromDateFormatted string
-	var validToDateFormatted *string
-	var validFromDate, validToDate utils.NullTime
+	var gridArea, typeOfMP string
 
 	//Run the prepared SQL query that retrieves the time series
 	rows, err := sqlstmtSelectMasterData.Query(meteringPointId)
@@ -212,22 +249,10 @@ func (i *Impl) GetMasterData(meteringPointId string, PST *time.Location) ([]mode
 
 		//Store the values from the current line in the result to local variables
 		rows.Scan(
-			&meteringPointId, &gridArea, &typeOfMP, &validFromDate, &validToDate)
+			&meteringPointId, &gridArea, &typeOfMP)
 
-		validFromDateFormatted, err = utils.FormatDate(PST, validFromDate, "", i.LogFileLogger)
-		if err != nil {
-			(*i.LogFileLogger).Error(err)
-			return masterDataRows, err
-		}
-		validToDateFormatted, err = utils.FormatDatePointer(PST, validToDate, i.LogFileLogger)
-		if err != nil {
-			(*i.LogFileLogger).Error(err)
-			return masterDataRows, err
-		}
 		masterDataRow.GridArea = gridArea
 		masterDataRow.TypeOfMP = typeOfMP
-		masterDataRow.MasterDataStartDate = validFromDateFormatted
-		masterDataRow.MasterDataEndDate = validToDateFormatted
 		masterDataRows = append(masterDataRows, masterDataRow)
 	}
 	return masterDataRows, nil
@@ -270,7 +295,7 @@ func checkDataMigrationExportedPeriod(db *sql.DB, periodFromDate time.Time, migr
 	return err
 }
 
-//SchedulerWorker reads the DB to see if there are any scheduled migration runs
+// SchedulerWorker reads the DB to see if there are any scheduled migration runs
 func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 
 	//timer := time.Now()
@@ -362,7 +387,7 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 	}
 }
 
-//GetNumberOfMeteringPoints finds the number of metering points to be migrated (all or a subset defined in the config file)
+// GetNumberOfMeteringPoints finds the number of metering points to be migrated (all or a subset defined in the config file)
 func (i *Impl) GetNumberOfMeteringPoints(sqlFlag bool, sqlCount string) (*int, error) {
 
 	var meteringPointCount int
@@ -382,7 +407,7 @@ func (i *Impl) GetNumberOfMeteringPoints(sqlFlag bool, sqlCount string) (*int, e
 	return &meteringPointCount, nil
 }
 
-//GetMeteringPoints populates the channel with the metering points that will be migrated (all or a subset defined in the config file)
+// GetMeteringPoints populates the channel with the metering points that will be migrated (all or a subset defined in the config file)
 func (i *Impl) GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, mpFlag bool, sqlObjectIds string) error {
 
 	//Variable to hold a list of meteringPoints equal to the number specified in nWorkload
@@ -550,4 +575,420 @@ func (i *Impl) SetSQLUpdateStatusToError(migrationRunId int, errorMessage string
 	}
 
 	return nil
+}
+
+// FindNextRSM012MessageSeqNo Find the id to use for the next RSM012 message
+func (i *Impl) FindNextRSM012MessageSeqNo() (int, error) {
+	//Prepare the SQL query that inserts to the progress table
+	rows, err := i.LogDB.Query(sqls.GetSeriesMessSeqNo())
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return -1, err
+	}
+	defer rows.Close()
+	var id = -1
+
+	//Loop through the result from the executed SQL query
+	for rows.Next() {
+
+		//Store the values from the current line in the result to local variables
+		err = rows.Scan(&id)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	return id, err
+}
+
+// FindNextRecipientSeqNo Find the next id for use in the recipient for a new RSM-012 message
+func (i *Impl) FindNextRecipientSeqNo() (int, error) {
+	//Prepare the SQL query that inserts to the progress table
+	rows, err := i.LogDB.Query(sqls.GetRecipientSeqNo())
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return -1, err
+	}
+	defer rows.Close()
+	var id = -1
+
+	//Loop through the result from the executed SQL query
+	for rows.Next() {
+
+		//Store the values from the current line in the result to local variables
+		err = rows.Scan(&id)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	return id, err
+}
+
+// FindMetroingPointInfo Find information about the meteringPoint
+func (i *Impl) FindMeteringPointInfo(meteringpointId string) (int, string, string, error) {
+	//Prepare the SQL query that inserts to the progress table
+	rows, err := i.LogDB.Query(sqls.GetMeteringPointInfo(), meteringpointId)
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return -1, "", "", err
+	}
+	defer rows.Close()
+	var meteringPointSeqNo = -1
+	var objectType = ""
+	var externalTypeCode = ""
+
+	//Loop through the result from the executed SQL query
+	for rows.Next() {
+
+		//Store the values from the current line in the result to local variables
+		err = rows.Scan(&meteringPointSeqNo, &objectType, &externalTypeCode)
+		if err != nil {
+			return -1, "", "", err
+		}
+	}
+
+	return meteringPointSeqNo, objectType, externalTypeCode, err
+
+}
+
+// FindSettlementMethodType Find settlement method type
+func (i *Impl) FindSettlementMethodType(meteringpointSeqNo int, fromTimeStr string) (string, error) {
+	//Prepare the SQL query that inserts to the progress table
+	rows, err := i.LogDB.Query(sqls.GetSettlementMethodType(), meteringpointSeqNo, fromTimeStr, fromTimeStr)
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return "", err
+	}
+	defer rows.Close()
+	var settlementMethodType = ""
+
+	//Loop through the result from the executed SQL query
+	for rows.Next() {
+
+		//Store the values from the current line in the result to local variables
+		err = rows.Scan(&settlementMethodType)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return settlementMethodType, err
+}
+
+// FindMarketActorByRole Get the marketaAtor by role
+func (i *Impl) FindMarketActorByRole(role string) (int, error) {
+	//Prepare the SQL query that inserts to the progress table
+	rows, err := i.LogDB.Query(sqls.GetMarketActorByRole(), role)
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return -1, err
+	}
+	defer rows.Close()
+	var actorId = -1
+	//Loop through the result from the executed SQL query, For the roles we are looking at it should only be 1
+	for rows.Next() {
+
+		//Store the values from the current line in the result to local variables
+		err = rows.Scan(&actorId)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	return actorId, err
+}
+
+// FindBreakRules Get the fields used in the break strings
+func (i *Impl) FindBreakRules() ([]string, error) {
+	//Prepare the SQL query that inserts to the progress table
+	rows, err := i.LogDB.Query(sqls.GetBreakRules())
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return nil, err
+	}
+	defer rows.Close()
+	var breakRule string
+	var breakRules []string
+
+	//Loop through the result from the executed SQL query, For the roles we are looking at it should only be 1
+	for rows.Next() {
+
+		//Store the values from the current line in the result to local variables
+		err = rows.Scan(&breakRule)
+		if err != nil {
+			return nil, err
+		}
+
+		breakRules = append(breakRules, breakRule)
+	}
+
+	return breakRules, err
+}
+
+func (i *Impl) CreateRSM012MessageCounter(messageSeqNo int, unit, resolution string, sumSeries int) error {
+
+	var resolutionStr string
+	resolutionInt, err := strconv.Atoi(resolution)
+
+	if err != nil {
+		return err
+	}
+
+	if resolutionInt == 15 {
+		resolutionStr = "Q"
+	} else {
+		if resolutionInt == 60 {
+			resolutionStr = "H"
+		} else {
+			if resolutionInt == 1440 {
+				resolutionStr = "D"
+			} else {
+				if resolutionInt == 43200 {
+					resolutionStr = "Y"
+				}
+			}
+		}
+	}
+
+	_, err = sqlStmtInsertSerieCounter.Exec(messageSeqNo, unit, resolutionStr, sumSeries)
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	} else {
+		return nil
+	}
+}
+
+func (i *Impl) CreateRSM012MessageValues(messageSeqNo int, data models.TimeSeriesData) error {
+	values := strings.Split(data.RawTimeSeriesValues, ";")
+
+	listNo := 1
+	splitData2Dim := utils.ConvertToTwoDArray(values, 150)
+
+	for _, splitData1Dim := range splitData2Dim {
+
+		var valueList, valueQualList, startTimeList, completenessList strings.Builder
+		first := true
+
+		for _, data := range splitData1Dim {
+
+			if data != "" {
+				details := strings.Split(data, "|")
+				if len(details) < 3 {
+					continue
+				}
+
+				dateTime := details[0]
+				if len(dateTime) < 16 {
+					continue
+				}
+
+				year := dateTime[6:10]
+				month := dateTime[3:5]
+				day := dateTime[0:2]
+				hour := dateTime[11:13]
+				minutes := dateTime[14:16]
+
+				if !first {
+					startTimeList.WriteString(";")
+					valueList.WriteString(";")
+					valueQualList.WriteString(";")
+					completenessList.WriteString(";")
+				}
+
+				startTimeList.WriteString(year + month + day + hour + minutes)
+
+				value := details[1]
+				if strings.HasPrefix(value, ",") {
+					value = "0" + value
+				}
+				value = strings.ReplaceAll(value, ",", ".")
+
+				valueList.WriteString(value)
+				valueQualList.WriteString(utils.GetInternalValueQualifier(strings.TrimSuffix(details[2], ";")))
+				completenessList.WriteString("100")
+
+				first = false
+			}
+
+		}
+		valueStr := valueList.String()
+		valueQualStr := valueQualList.String()
+		startTimeStr := startTimeList.String()
+		completenessStr := completenessList.String()
+
+		_, err := sqlStmtInsertSerieValue.Exec(listNo, messageSeqNo, valueStr, valueQualStr, startTimeStr, completenessStr)
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return err
+		}
+
+		listNo++
+	}
+	return nil
+}
+
+func (i *Impl) CreateRSM012Message(data models.Data) error {
+	mutexRSM012Inserts.Lock()
+	defer mutexRSM012Inserts.Unlock()
+
+	objectId := data.MeteringPointData.MeteringPointId
+	gridArea := data.MeteringPointData.MasterData[0].GridArea
+	reasonForReading := "50"
+
+	for _, seriesData := range data.TimeSeries {
+		var meteringPointSeqNo = -1
+		var objectType = ""
+		var externalTypeCode = ""
+		var msgSettlementMethod = ""
+		messageSeqNo, err := i.FindNextRSM012MessageSeqNo()
+
+		meteringPointSeqNo, objectType, externalTypeCode, err = i.FindMeteringPointInfo(objectId)
+		dateGeneratedStr := time.Now().Format(config.GetExportDateLayout())
+		fromTime, err := time.Parse(config.GetJSONDateLayoutLong(), seriesData.ValidFromDate)
+
+		var fromTimeStr = fromTime.Format(config.GetExportDateLayout())
+		settlementMethod, err := i.FindSettlementMethodType(meteringPointSeqNo, fromTime.In(time.Local).Format(config.GetExportDateLayout()))
+
+		toTime, err := time.Parse(config.GetJSONDateLayoutLong(), seriesData.ValidToDate)
+		var toTimeStr = toTime.Format(config.GetExportDateLayout())
+		transactionInsertDate, err := time.Parse(config.GetJSONDateLayoutLong(), seriesData.TransactionInsertDate)
+		var transactionInsertDateStr = transactionInsertDate.Format(config.GetExportDateLayout())
+
+		if externalTypeCode == "E17" || externalTypeCode == "E18" || externalTypeCode == "E20" {
+			externalTypeCode = ""
+		}
+
+		if objectType == "C" && externalTypeCode == "" {
+			if settlementMethod != "" {
+				msgSettlementMethod = settlementMethod
+				if settlementMethod == "X" {
+					reasonForReading = "75"
+				} else if settlementMethod == "S" {
+					reasonForReading = "56"
+				}
+			} else {
+				reasonForReading = "50"
+			}
+		} else {
+			reasonForReading = "50"
+		}
+
+		tx, err := i.LogDB.Begin()
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return err
+		}
+
+		_, err = sqlStmtInsertSerieMessage.Exec(messageSeqNo, meteringPointSeqNo, objectId, objectId, gridArea, dateGeneratedStr, fromTimeStr, toTimeStr, objectType, gridArea, objectType, reasonForReading, msgSettlementMethod, externalTypeCode, transactionInsertDateStr, seriesData.Status)
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			err = tx.Rollback()
+			if err != nil {
+				(*i.LogFileLogger).Error(err)
+				return err
+			}
+			return err
+		}
+
+		err = i.CreateRSM012MessageCounter(messageSeqNo, seriesData.Unit, seriesData.Resolution, len(seriesData.RawTimeSeriesValues))
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			err = tx.Rollback()
+			if err != nil {
+				(*i.LogFileLogger).Error(err)
+				return err
+			}
+		}
+
+		err = i.CreateRSM012MessageValues(messageSeqNo, seriesData)
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			err = tx.Rollback()
+			if err != nil {
+				(*i.LogFileLogger).Error(err)
+				return err
+			}
+		}
+
+		err = i.CreateRSM012MessageRecipient(messageSeqNo, reasonForReading)
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			err = tx.Rollback()
+			if err != nil {
+				(*i.LogFileLogger).Error(err)
+				return err
+			}
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return err
+		}
+
+		messageSeqNo++
+	}
+
+	return nil
+}
+
+func getBreakData(recipientRole, senderRole string, senderId, recipientId int, reasonForReading string) map[string]string {
+	result := make(map[string]string)
+
+	result["RERO"] = recipientRole
+	result["SNRO"] = senderRole
+	result["SNID"] = strconv.Itoa(senderId)
+	result["REID"] = strconv.Itoa(recipientId)
+	result["XRRO"] = recipientRole
+	result["XSRO"] = senderRole
+	result["MTYP"] = "TSE"
+	result["MEST"] = "TP"
+	result["GMAV"] = reasonForReading
+	result["UTYP"] = "EP"
+	result["TEST"] = "P"
+	result["XREF"] = ""
+
+	return result
+}
+
+func (i *Impl) CreateRSM012MessageRecipient(serieMessageSeqNo int, reasonForReading string) error {
+
+	seqNumber, err := i.FindNextRecipientSeqNo()
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
+
+	senderId, err := i.FindMarketActorByRole("DHUB")
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
+
+	recipientId, err := i.FindMarketActorByRole("D3M")
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	}
+
+	transRef := strings.ReplaceAll(uuid.New().String(), "-", "")
+
+	var breakStrList strings.Builder
+
+	breakStrList.WriteString(strconv.Itoa(senderId))
+	breakStrList.WriteString(";")
+	breakStrList.WriteString(strconv.Itoa(recipientId))
+	breakStrList.WriteString(";TD;")
+	breakStrList.WriteString(reasonForReading)
+	breakStrList.WriteString(";P;EP;;D3M")
+
+	_, err = sqlStmtInsertRecipient.Exec(seqNumber, "D3M", senderId, recipientId, transRef, serieMessageSeqNo, breakStrList.String())
+	if err != nil {
+		(*i.LogFileLogger).Error(err)
+		return err
+	} else {
+		return nil
+	}
 }

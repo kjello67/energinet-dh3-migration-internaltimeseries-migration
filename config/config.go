@@ -53,132 +53,132 @@ func GetConfigDB(params ...string) Configuration {
 	return configuration
 }
 
-//GetJSONDateLayoutLong returns the date layout to be used in the file
+// GetJSONDateLayoutLong returns the date layout to be used in the file
 func GetJSONDateLayoutLong() string {
 	return "2006-01-02T15:04:05"
 }
 
-//GetJSONDateLayoutShort returns the date layout to be used in the file
+// GetJSONDateLayoutShort returns the date layout to be used in the file
 func GetJSONDateLayoutShort() string {
 	return "2006-01-02"
 }
 
-//GetExportDateLayout returns the date layout to be used in the file
+// GetExportDateLayout returns the date layout to be used in the file
 func GetExportDateLayout() string {
 	return "02.01.2006 15:04:05"
 }
 
-//GetFileDateLayout returns the date layout to be used in the file
+// GetFileDateLayout returns the date layout to be used in the file
 func GetFileDateLayout() string {
 	return "20060102150405"
 }
 
-//GetFilenameDelimiter returns the delimiter to be used in the filename
+// GetFilenameDelimiter returns the delimiter to be used in the filename
 func GetFilenameDelimiter() string {
 	return "_"
 }
 
-//GetTSValueDelimiter returns the delimiter to be used in the filename
+// GetTSValueDelimiter returns the delimiter to be used in the filename
 func GetTSValueDelimiter() string {
 	return ";"
 }
 
-//GetFilenamePrefix returns the prefix to be used for time series in the filename
+// GetFilenamePrefix returns the prefix to be used for time series in the filename
 func GetFilenamePrefix() string {
 	return "TS"
 }
 
-//GetTimeLocation returns the location used for timestamps
+// GetTimeLocation returns the location used for timestamps
 func GetTimeLocation() string {
 	return "Europe/Copenhagen"
 }
 
-//GetTmpExtension returns the temporary extension of the filename
+// GetTmpExtension returns the temporary extension of the filename
 func GetTmpExtension() string {
 	return ".tmp"
 }
 
-//GetFinalExtension returns the final extension of the filename
+// GetFinalExtension returns the final extension of the filename
 func GetFinalExtension() string {
 	return ".json"
 }
 
-//GetExportTableName returns the name of the table where the scheduled runs and the final status should be stored
+// GetExportTableName returns the name of the table where the scheduled runs and the final status should be stored
 func GetExportTableName() string {
 	return "DMDH3_OWN.DATAMIGRATION_EXPORT"
 }
 
-//GetExportProgressTableName returns the name of the table where the detailed progress of the export should be stored
+// GetExportProgressTableName returns the name of the table where the detailed progress of the export should be stored
 func GetExportProgressTableName() string {
 	return "DMDH3_OWN.DATAMIGRATION_EXPORT_PROGRESS"
 }
 
-//GetStatusNew returns the string used in the DB for new
+// GetStatusNew returns the string used in the DB for new
 func GetStatusNew() string {
 	return "NEW"
 }
 
-//GetStatusRunning returns the string used in the DB for running
+// GetStatusRunning returns the string used in the DB for running
 func GetStatusRunning() string {
 	return "RUN"
 }
 
-//GetStatusFinished returns the string used in the DB for finished
+// GetStatusFinished returns the string used in the DB for finished
 func GetStatusFinished() string {
 	return "FIN"
 }
 
-//GetStatusError returns the string used in the DB for errors
+// GetStatusError returns the string used in the DB for errors
 func GetStatusError() string {
 	return "ERR"
 }
 
-//GetDomain returns the string used in the DB for the domain
+// GetDomain returns the string used in the DB for the domain
 func GetDomain() string {
 	return "TimeSeries"
 }
 
-//GetMigrationDetailsWhenRunning returns the string used in the DB for details when running
+// GetMigrationDetailsWhenRunning returns the string used in the DB for details when running
 func GetMigrationDetailsWhenRunning() string {
 	return "Migration run is started"
 }
 
-//GetMigrationDetailsWhenFinished returns the string used in the DB for details when finished
+// GetMigrationDetailsWhenFinished returns the string used in the DB for details when finished
 func GetMigrationDetailsWhenFinished() string {
 	return "Finished"
 }
 
-//GetLogFileName return the name of the log file
+// GetLogFileName return the name of the log file
 func GetLogFileName() string {
-	return "./out/timeseries-migration.log"
+	return "./out/internaltimeseries-migration.log"
 }
 
-//GetLogFileNameWithoutExtension return the name of the log file
+// GetLogFileNameWithoutExtension return the name of the log file
 func GetLogFileNameWithoutExtension() string {
-	return "./out/timeseries-migration"
+	return "./out/internaltimeseries-migration"
 }
 
-//GetLogFileExtension return the name of the log file
+// GetLogFileExtension return the name of the log file
 func GetLogFileExtension() string {
 	return "log"
 }
 
-//GetDefaultEnvironment returns the default environment to check for scheduled migration runs
+// GetDefaultEnvironment returns the default environment to check for scheduled migration runs
 func GetDefaultEnvironment() string {
 	return "PROD"
 }
 
-//GetMaxOpenConnections returns...
+// GetMaxOpenConnections returns...
 func GetMaxOpenConnections() int {
 	return 4
 }
 
-//GetMaxIdleConnections returns...
+// GetMaxIdleConnections returns...
 func GetMaxIdleConnections() int {
 	return 2
 }
 
-//GetScheduledRunFromMigrationTable returns...
+// GetScheduledRunFromMigrationTable returns...
 func GetScheduledRunFromMigrationTable() bool {
-	return true
+	return false
 }

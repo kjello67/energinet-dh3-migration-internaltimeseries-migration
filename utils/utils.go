@@ -2,11 +2,13 @@ package utils
 
 import (
 	"database/sql"
+	"internaltimeseries-migration/config"
+	"internaltimeseries-migration/logger"
+	"math"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
-	"timeseries-migration/config"
-	"timeseries-migration/logger"
 )
 
 func FormatDate(PST *time.Location, nullTime NullTime, resolution string, logFileLogger *logger.Logger) (string, error) {
@@ -73,4 +75,42 @@ func PrintMemUsage(logFileLogger *logger.Logger) {
 		"TotalAlloc = " + strconv.Itoa(int(m.TotalAlloc/1024/1024)) + " MiB, " +
 		"Sys = " + strconv.Itoa(int(m.Sys/1024/1024)) + " MiB, " +
 		"NumGC = " + strconv.Itoa(int(m.NumGC)))
+}
+
+func ConvertToTwoDArray(oneDArray []string, columns int) [][]string {
+	// Calculate the number of rows
+	rows := int(math.Ceil(float64(len(oneDArray)) / float64(columns)))
+
+	// Initialize the 2D slice
+	twoDArray := make([][]string, rows)
+	for i := 0; i < rows; i++ {
+		twoDArray[i] = make([]string, columns)
+	}
+
+	// Fill the 2D slice
+	for i, val := range oneDArray {
+		row := i / columns
+		col := i % columns
+		twoDArray[row][col] = val
+	}
+
+	return twoDArray
+}
+
+func GetInternalValueQualifier(valueQualifier string) string {
+	if valueQualifier == "" {
+		return ""
+	} else if strings.EqualFold(valueQualifier, "E01") {
+		return "M"
+	} else if strings.EqualFold(valueQualifier, "56") {
+		return "E"
+	} else if strings.EqualFold(valueQualifier, "36") {
+		return "C"
+	} else if strings.EqualFold(valueQualifier, "D01") {
+		return "B"
+	} else if strings.EqualFold(valueQualifier, "QM") {
+		return "?"
+	} else {
+		return valueQualifier
+	}
 }

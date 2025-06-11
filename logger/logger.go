@@ -3,10 +3,10 @@ package logger
 import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
+	"internaltimeseries-migration/config"
 	"os"
 	"sync"
 	"time"
-	"timeseries-migration/config"
 )
 
 var (
