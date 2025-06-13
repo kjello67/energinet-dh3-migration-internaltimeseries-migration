@@ -21,6 +21,7 @@ type Impl struct {
 
 type Logger interface {
 	Fatal(err error)
+	FatalWithText(logMessage string)
 	Error(logMessage error)
 	ErrorWithText(logMessage string)
 	Info(logMessage string)
@@ -121,6 +122,22 @@ func (i *Impl) Fatal(err error) {
 	lineCounter++
 
 	log.Fatal(err)
+	if i.logFileIsTooLarge() {
+		err := i.replaceLogFile()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+	}
+}
+
+func (i *Impl) FatalWithText(logMessage string) {
+	mutexLogging.Lock()
+	defer mutexLogging.Unlock()
+
+	lineCounter++
+
+	log.Fatal(logMessage)
 	if i.logFileIsTooLarge() {
 		err := i.replaceLogFile()
 		if err != nil {

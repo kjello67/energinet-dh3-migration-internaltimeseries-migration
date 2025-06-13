@@ -6,7 +6,7 @@ import (
 )
 
 // GetSQLSelectMasterData returns the SQL statement used to retrieve the master data
-/* KOK func GetSQLSelectMasterData() string {
+func GetSQLSelectMasterData() string {
 
 	//Create the main body of the SQL statement
 	sql :=
@@ -24,15 +24,15 @@ WHERE
 
 	return sql
 }
-*/
 
+/*
 func GetSQLSelectMasterData() string {
 
 	//Create the main body of the SQL statement
 	sql :=
-		`select metering_point_id, 
-       metering_grid_area_id, 
-       type_of_mp 
+		`select metering_point_id,
+       metering_grid_area_id,
+       type_of_mp
 FROM
     v_CCR_physical_details    isc
 WHERE
@@ -40,7 +40,7 @@ WHERE
 
 	return sql
 }
-
+*/
 // GetSQLSelectData returns the SQL statement used to retrieve the timeseries data
 func GetSQLSelectData() string {
 
@@ -60,8 +60,8 @@ metering_point AS -- metering points to be included (for now only 1)
    m.MPOINT_SEQNO,
    p.metering_point_id
  FROM param p
---KOK   JOIN reading.m_meterpoint m ON m.objectid = p.metering_point_id),
-   JOIN m_meterpoint m ON m.objectid = p.metering_point_id),
+  JOIN reading.m_meterpoint m ON m.objectid = p.metering_point_id),
+--   JOIN m_meterpoint m ON m.objectid = p.metering_point_id),
 counter AS -- counters for the relevant metering points
 (SELECT 
    m.s_id,
@@ -70,8 +70,8 @@ counter AS -- counters for the relevant metering points
    c.IS_COUNTER_CODE,
    c.COUNTER_CLASS_ID */
  FROM metering_point m
---KOK      JOIN reading.m_counter c ON c.mpoint_seqno = m.mpoint_seqno),
-      JOIN m_counter c ON c.mpoint_seqno = m.mpoint_seqno),
+      JOIN reading.m_counter c ON c.mpoint_seqno = m.mpoint_seqno),
+--      JOIN m_counter c ON c.mpoint_seqno = m.mpoint_seqno),
 periodic_value AS -- the periodical volumes (monthly) stored as "time series" in IS Change
 (SELECT
    p.s_id,
@@ -117,10 +117,10 @@ series AS -- time series for the selected metering points
    s.read_reason as read_reason
  FROM param p
    JOIN counter c ON c.s_id = p.s_id
- --KOK   JOIN reading.m_import_serie s ON s.counter_seqno = c.COUNTER_SEQNO
- --KOK   JOIN reading.M_BATCH b ON b.batch_seqno = s.batch_seqno
-   JOIN m_import_serie s ON s.counter_seqno = c.COUNTER_SEQNO
-   JOIN M_BATCH b ON b.batch_seqno = s.batch_seqno
+   JOIN reading.m_import_serie s ON s.counter_seqno = c.COUNTER_SEQNO
+   JOIN reading.M_BATCH b ON b.batch_seqno = s.batch_seqno
+ --  JOIN m_import_serie s ON s.counter_seqno = c.COUNTER_SEQNO
+ --  JOIN M_BATCH b ON b.batch_seqno = s.batch_seqno
  WHERE
    s.SERIE_STATUS IN (2,9) AND -- it has been mentioned to also include status 9 - to be verified
    s.SERIE_TIMESTAMP > p.processed_from_time - 1/24/60/60 AND 
@@ -133,8 +133,8 @@ series AS -- time series for the selected metering points
    NOT EXISTS (
      SELECT 1 
      FROM counter c2 
-       --KOK JOIN reading.m_import_serie s2 ON s2.counter_seqno = c2.counter_seqno 
-       JOIN m_import_serie s2 ON s2.counter_seqno = c2.counter_seqno 
+       JOIN reading.m_import_serie s2 ON s2.counter_seqno = c2.counter_seqno 
+       --JOIN m_import_serie s2 ON s2.counter_seqno = c2.counter_seqno 
      WHERE 
 --       b.batch_type IN ('RT', 'AA') AND 
        b.batch_type = 'RT' AND 
@@ -151,10 +151,10 @@ message_data AS
    to_char(r.MELDINGSNR_DATA) AS message_id,
    r.TRANSREF,
    h.meldingsref
- --KOK FROM reading.s_recipient r 
- --KOK   JOIN reading.s_melding h on h.meldingsnr = r.meldingsnr
- FROM s_recipient r 
-    JOIN s_melding h on h.meldingsnr = r.meldingsnr
+ FROM reading.s_recipient r 
+    JOIN reading.s_melding h on h.meldingsnr = r.meldingsnr
+ --FROM s_recipient r 
+ --   JOIN s_melding h on h.meldingsnr = r.meldingsnr
  WHERE
    r.MELDINGSNR_DATA IN (SELECT to_number(sender_ref DEFAULT 0 ON conversion error) FROM (SELECT sender_ref FROM series UNION ALL SELECT sender_ref FROM periodic_value)) AND
    r.meldingsnr_data > 0 AND 
@@ -165,16 +165,16 @@ series_value AS -- values for each of the time series (active)
   RTRIM(XMLAGG(XMLELEMENT(E, TO_CHAR(v.reading_time, 'DD.MM.YYYY HH24:MI:SS')  || '|' || v.READING_VALUE || '|' || decode(v.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B', 'D01', '?', 'QM'), ';') order by v.reading_time).GetClobVal(),',') as valuedata, 
    'N' as historical_flag   
  FROM series s
-   --KOK JOIN reading.M_SERIE_VALUE v ON v.IMPORT_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'N'),
-   JOIN M_SERIE_VALUE v ON v.IMPORT_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'N'),
+   JOIN reading.M_SERIE_VALUE v ON v.IMPORT_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'N'),
+   --JOIN M_SERIE_VALUE v ON v.IMPORT_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'N'),
 historical_value AS -- historical values for each of the time series 
 (SELECT
    s.IMPORT_SERIE_SEQNO,
    RTRIM(XMLAGG(XMLELEMENT(E, TO_CHAR(h.reading_time, 'DD.MM.YYYY HH24:MI:SS')  || '|' || h.READING_VALUE  || '|' || decode(h.DATA_ORIGIN, 'M', 'E01', 'E', '56', 'C', '36', 'B', 'D01', '?', 'QM'), ';') order by h.reading_time).GetClobVal(),',')  as valuedata,
    'Y' AS historical_flag
  FROM series s
-   --KOK JOIN reading.M_SERIE_VALUE_HIST h ON h.OLD_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'Y')
-    JOIN M_SERIE_VALUE_HIST h ON h.OLD_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'Y')
+    JOIN reading.M_SERIE_VALUE_HIST h ON h.OLD_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'Y')
+    --JOIN M_SERIE_VALUE_HIST h ON h.OLD_SERIE_SEQNO = s.IMPORT_SERIE_SEQNO group by s.IMPORT_SERIE_SEQNO, 'Y')
 SELECT -- Main SELECT
    m.metering_point_id,
    v.transref AS transaction_id, 
@@ -310,7 +310,7 @@ func GetSQLSelectNewRuns() string {
 			,PERIOD_TO_DATE
 			FROM DMDH3_OWN.DATAMIGRATION_EXPORT e
 			where MIGRATION_STATUS = 'NEW'
-            and e.MIGRATION_DOMAIN = 'TimeSeries'
+            and e.MIGRATION_DOMAIN = 'InternalTimeSeries'
 			and MIGRATION_DUE_DATE < sys_extract_utc(systimestamp)
 			and not exists (select 1 from DMDH3_OWN.DATAMIGRATION_EXPORT de where de.MIGRATION_DOMAIN = e.MIGRATION_DOMAIN and de.MIGRATION_STATUS = 'RUN')
 			order by PERIOD_FROM_DATE
@@ -326,7 +326,7 @@ func GetDataMigrationExportedPeriod() string {
 	return `
     SELECT MIN(PERIOD_FROM_DATE) as MaxFromDate, MAX(PERIOD_TO_DATE) as MaxToDate
 	FROM DMDH3_OWN.DATAMIGRATION_EXPORT
-    where MIGRATION_DOMAIN = 'TimeSeries'
+    where MIGRATION_DOMAIN = 'InternalTimeSeries'
 	and MIGRATION_STATUS   = 'FIN'
 `
 }
@@ -337,7 +337,7 @@ func GetDataMigrationExportedPeriodForMp(meterpointId string) string {
 
 	return "SELECT MAX(EXPORTED_TO_DATE) as EXPORTED_TO_DATE " +
 		" FROM  DMDH3_OWN.DATAMIGRATION_EXPORT_PROGRESS" +
-		" where MIGRATION_DOMAIN = 'TimeSeries' " +
+		" where MIGRATION_DOMAIN = 'InternalTimeSeries' " +
 		" and   METERING_POINT_ID = '" + meterpointId + "'" +
 		" and EXPORT_STATUS   = 'FIN'"
 }

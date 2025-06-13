@@ -1,0 +1,9 @@
+{
+  "FILE_LOCATION":   "./out/JUNIOR02",
+  "SQL_ITEM_COUNT":  "select count(objectid) from s_utvekslingsobjekt where objectid in ( 'OBJ_1697','OBJ_150704', 'OBJ_150705')",
+  "SQL_ITEM_ID":     "select distinct(objectid) from s_utvekslingsobjekt where objectid in ( 'OBJ_1697','OBJ_150704', 'OBJ_150705')",
+  "DEBUG_LOGGING":   true,
+  "RENAME_BULK":     3,
+  "MAX_LOGFILE_SIZE": 100,
+  "OUTPUT_TYPE":     "database"
+}

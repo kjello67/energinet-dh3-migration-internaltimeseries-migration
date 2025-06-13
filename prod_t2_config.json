@@ -1,0 +1,8 @@
+{
+  "FILE_LOCATION":   "./out/PROD",
+  "SQL_ITEM_COUNT":  "select count(distinct(objectid)) from reading.m_meterpoint where objectid in ('571313144500505248')",
+  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where objectid in ('571313144500505248')",
+  "MAX_LOGFILE_SIZE": 1000,
+  "OUTPUT_TYPE":     "json",
+  "DEBUG_LOGGING":   false
+}

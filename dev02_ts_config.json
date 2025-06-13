@@ -1,8 +1,0 @@
-{
-  "FILE_LOCATION":   "./out/DEV02",
-  "SQL_ITEM_COUNT":  "select count(*) from reading.m_meterpoint where off_netarea = 909 and rownum <= 1000",
-  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where  off_netarea = 909 and rownum <= 1000",
-  "DEBUG_LOGGING":   true,
-  "RENAME_BULK":     3,
-  "MAX_LOGFILE_SIZE": 100
-}

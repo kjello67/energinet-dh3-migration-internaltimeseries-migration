@@ -45,7 +45,8 @@ type Repository interface {
 	FindBreakRules() ([]string, error)
 	CreateRSM012MessageCounter(messageSeqNo int, unit, resolution string, sumSeries int) error
 	CreateRSM012MessageValues(messageSeqNo int, data models.TimeSeriesData) error
-	CreateRSM012Message(data models.Data) error
+	CreateRSM012Message(data models.Data) ([]TimeSeriesInfo, error)
+	CreateRSM012MessageRecipient(serieMessageSeqNo int, reasonForReading string) (string, error)
 }
 
 var NewRepository = func(dbConnectionString, logConnectionString string, logFileLogger *logger.Logger) (Repository, error) {
@@ -234,7 +235,9 @@ func (i *Impl) GetMasterData(meteringPointId string, PST *time.Location) ([]mode
 
 	var masterDataRows []models.Masterdata
 	var masterDataRow models.Masterdata
-	var gridArea, typeOfMP string
+	var gridArea, typeOfMP, validFromDateFormatted string
+	var validToDateFormatted *string
+	var validFromDate, validToDate utils.NullTime
 
 	//Run the prepared SQL query that retrieves the time series
 	rows, err := sqlstmtSelectMasterData.Query(meteringPointId)
@@ -249,10 +252,23 @@ func (i *Impl) GetMasterData(meteringPointId string, PST *time.Location) ([]mode
 
 		//Store the values from the current line in the result to local variables
 		rows.Scan(
-			&meteringPointId, &gridArea, &typeOfMP)
+			&meteringPointId, &gridArea, &typeOfMP, &validFromDate, &validToDate)
+
+		validFromDateFormatted, err = utils.FormatDate(PST, validFromDate, "", i.LogFileLogger)
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return masterDataRows, err
+		}
+		validToDateFormatted, err = utils.FormatDatePointer(PST, validToDate, i.LogFileLogger)
+		if err != nil {
+			(*i.LogFileLogger).Error(err)
+			return masterDataRows, err
+		}
 
 		masterDataRow.GridArea = gridArea
 		masterDataRow.TypeOfMP = typeOfMP
+		masterDataRow.MasterDataStartDate = validFromDateFormatted
+		masterDataRow.MasterDataEndDate = validToDateFormatted
 		masterDataRows = append(masterDataRows, masterDataRow)
 	}
 	return masterDataRows, nil
@@ -350,13 +366,6 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 		err := checkDataMigrationExportedPeriod(i.LogDB, periodFromDate, migrationRunId)
 
 		if err != nil {
-			return nil, migrationRunId, err
-		}
-
-		if parameter == "" {
-			errorText := "DB column PARAMETER is mandatory"
-			err = errors.New(errorText)
-			(*i.LogFileLogger).ErrorWithText(errorText + " - migration run aborted")
 			return nil, migrationRunId, err
 		}
 
@@ -829,9 +838,10 @@ func (i *Impl) CreateRSM012MessageValues(messageSeqNo int, data models.TimeSerie
 	return nil
 }
 
-func (i *Impl) CreateRSM012Message(data models.Data) error {
+func (i *Impl) CreateRSM012Message(data models.Data) ([]TimeSeriesInfo, error) {
 	mutexRSM012Inserts.Lock()
 	defer mutexRSM012Inserts.Unlock()
+	var timeSeriesInfoArray []TimeSeriesInfo
 
 	objectId := data.MeteringPointData.MeteringPointId
 	gridArea := data.MeteringPointData.MasterData[0].GridArea
@@ -878,7 +888,7 @@ func (i *Impl) CreateRSM012Message(data models.Data) error {
 		tx, err := i.LogDB.Begin()
 		if err != nil {
 			(*i.LogFileLogger).Error(err)
-			return err
+			return nil, err
 		}
 
 		_, err = sqlStmtInsertSerieMessage.Exec(messageSeqNo, meteringPointSeqNo, objectId, objectId, gridArea, dateGeneratedStr, fromTimeStr, toTimeStr, objectType, gridArea, objectType, reasonForReading, msgSettlementMethod, externalTypeCode, transactionInsertDateStr, seriesData.Status)
@@ -887,9 +897,9 @@ func (i *Impl) CreateRSM012Message(data models.Data) error {
 			err = tx.Rollback()
 			if err != nil {
 				(*i.LogFileLogger).Error(err)
-				return err
+				return nil, err
 			}
-			return err
+			return nil, err
 		}
 
 		err = i.CreateRSM012MessageCounter(messageSeqNo, seriesData.Unit, seriesData.Resolution, len(seriesData.RawTimeSeriesValues))
@@ -898,7 +908,7 @@ func (i *Impl) CreateRSM012Message(data models.Data) error {
 			err = tx.Rollback()
 			if err != nil {
 				(*i.LogFileLogger).Error(err)
-				return err
+				return nil, err
 			}
 		}
 
@@ -908,30 +918,32 @@ func (i *Impl) CreateRSM012Message(data models.Data) error {
 			err = tx.Rollback()
 			if err != nil {
 				(*i.LogFileLogger).Error(err)
-				return err
+				return nil, err
 			}
 		}
 
-		err = i.CreateRSM012MessageRecipient(messageSeqNo, reasonForReading)
+		transref, err := i.CreateRSM012MessageRecipient(messageSeqNo, reasonForReading)
 		if err != nil {
 			(*i.LogFileLogger).Error(err)
 			err = tx.Rollback()
 			if err != nil {
 				(*i.LogFileLogger).Error(err)
-				return err
+				return nil, err
 			}
 		}
+
+		timeSeriesInfoArray = append(timeSeriesInfoArray, TimeSeriesInfo{Transref: transref, MeterpointId: objectId})
 
 		err = tx.Commit()
 		if err != nil {
 			(*i.LogFileLogger).Error(err)
-			return err
+			return nil, err
 		}
 
 		messageSeqNo++
 	}
 
-	return nil
+	return timeSeriesInfoArray, nil
 }
 
 func getBreakData(recipientRole, senderRole string, senderId, recipientId int, reasonForReading string) map[string]string {
@@ -953,24 +965,24 @@ func getBreakData(recipientRole, senderRole string, senderId, recipientId int, r
 	return result
 }
 
-func (i *Impl) CreateRSM012MessageRecipient(serieMessageSeqNo int, reasonForReading string) error {
+func (i *Impl) CreateRSM012MessageRecipient(serieMessageSeqNo int, reasonForReading string) (string, error) {
 
 	seqNumber, err := i.FindNextRecipientSeqNo()
 	if err != nil {
 		(*i.LogFileLogger).Error(err)
-		return err
+		return "", err
 	}
 
 	senderId, err := i.FindMarketActorByRole("DHUB")
 	if err != nil {
 		(*i.LogFileLogger).Error(err)
-		return err
+		return "", err
 	}
 
 	recipientId, err := i.FindMarketActorByRole("D3M")
 	if err != nil {
 		(*i.LogFileLogger).Error(err)
-		return err
+		return "", err
 	}
 
 	transRef := strings.ReplaceAll(uuid.New().String(), "-", "")
@@ -987,8 +999,13 @@ func (i *Impl) CreateRSM012MessageRecipient(serieMessageSeqNo int, reasonForRead
 	_, err = sqlStmtInsertRecipient.Exec(seqNumber, "D3M", senderId, recipientId, transRef, serieMessageSeqNo, breakStrList.String())
 	if err != nil {
 		(*i.LogFileLogger).Error(err)
-		return err
+		return transRef, err
 	} else {
-		return nil
+		return "", nil
 	}
+}
+
+type TimeSeriesInfo struct {
+	Transref     string
+	MeterpointId string
 }

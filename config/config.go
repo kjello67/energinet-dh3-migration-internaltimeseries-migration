@@ -27,6 +27,7 @@ type Configuration struct {
 	TO_DATE          string
 	RENAME_BULK      int
 	MAX_LOGFILE_SIZE int64
+	OUTPUT_TYPE      string
 }
 
 func GetConfig(params ...string) Configuration {
@@ -35,7 +36,7 @@ func GetConfig(params ...string) Configuration {
 	if len(params) > 0 {
 		env = params[0]
 	}
-	fileName := fmt.Sprintf("./%s_ts_config.json", env)
+	fileName := fmt.Sprintf("./%s_t2_config.json", env)
 	gonfig.GetConf(fileName, &configuration)
 
 	return configuration
@@ -135,7 +136,7 @@ func GetStatusError() string {
 
 // GetDomain returns the string used in the DB for the domain
 func GetDomain() string {
-	return "TimeSeries"
+	return "InternalTimeSeries"
 }
 
 // GetMigrationDetailsWhenRunning returns the string used in the DB for details when running

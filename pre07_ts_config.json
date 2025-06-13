@@ -1,6 +1,0 @@
-{
-  "FILE_LOCATION":   "./out/PRE07",
-  "SQL_ITEM_COUNT":  "select count(distinct(objectid)) from reading.m_meterpoint where objectid in ('570715000000065484','570715000000066108')",
-  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where objectid in ('570715000000065484','570715000000066108')",
-  "DEBUG_LOGGING":   false
-}

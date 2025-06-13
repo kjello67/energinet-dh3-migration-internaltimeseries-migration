@@ -44,6 +44,10 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
+	if configurations.OUTPUT_TYPE != "json" && configurations.OUTPUT_TYPE != "database" {
+		logFileLogger.FatalWithText("The configuration OUTPUT_TYPE has to be either 'json' or 'database' ")
+	}
+
 	// Get the DB configurations for the given environment
 	DBConfigurations := config.GetConfigDB(environment)
 
@@ -84,8 +88,8 @@ func main() {
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
-			scheduledRun.Threads = 1
-			scheduledRun.PeriodFromDate = time.Date(2024, 12, 31, 23, 0, 0, 0, time.UTC)
+			scheduledRun.Threads = 4
+			scheduledRun.PeriodFromDate = time.Date(2024, 07, 17, 23, 0, 0, 0, time.UTC)
 			scheduledRun.PeriodToDate = time.Date(2025, 06, 01, 0, 0, 0, 0, time.UTC)
 		}
 
@@ -125,7 +129,7 @@ func main() {
 					errorMessage = err.Error()
 				} else {
 					//Call the function that will extract the grid area and write the time series to files in the json format
-					ok, err := processor.MigrateTimeSeries(nWorkers, nWorkload, repo, fileLocation, sqlFlag, sqlItemCount, sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE, &numberOfFilesToRename)
+					ok, err := processor.MigrateTimeSeries(nWorkers, nWorkload, repo, fileLocation, sqlFlag, sqlItemCount, sqlItemIds, scheduledRun, DBConfigurations.SKIP_DB_UPDATE, configurations.OUTPUT_TYPE, &numberOfFilesToRename)
 					if err != nil {
 						logFileLogger.Error(err)
 						errorMessage = err.Error()
