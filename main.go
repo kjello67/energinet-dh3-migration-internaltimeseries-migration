@@ -84,13 +84,14 @@ func main() {
 				logFileLogger.Fatal(err)
 			}
 		} else {
-			migrationRunId = 833
+			migrationRunId = 837
 			scheduledRun = new(models.ScheduledRun)
 			scheduledRun.UseListOfMPs = true
 			scheduledRun.MigrationRunId = migrationRunId
 			scheduledRun.Threads = 4
 			scheduledRun.PeriodFromDate = time.Date(2024, 07, 17, 23, 0, 0, 0, time.UTC)
-			scheduledRun.PeriodToDate = time.Date(2025, 06, 01, 0, 0, 0, 0, time.UTC)
+			scheduledRun.PeriodToDate = time.Date(2025, 6, 15, 23, 0, 0, 0, time.UTC)
+			//scheduledRun.PeriodToDate = time.Date(2025, 06, 01, 0, 0, 0, 0, time.UTC)
 		}
 
 		statusOfPrevRun := config.GetStatusFinished()

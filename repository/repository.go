@@ -31,8 +31,8 @@ type Repository interface {
 	ExecSqlstmtSelectTimesSeries(meteringPointId string, processedFromTime, processedUntilTime time.Time) (*sql.Rows, error)
 	GetMasterData(meteringPointId string, PST *time.Location) ([]models.Masterdata, error)
 	SchedulerWorker() (*models.ScheduledRun, int, error)
-	GetNumberOfMeteringPoints(sqlFlag bool, sqlCount string) (*int, error)
-	GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, mpFlag bool, sqlObjectIds string) error
+	GetNumberOfMeteringPoints(sqlFlag bool, startDateStr, sqlCount string) (*int, error)
+	GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, mpFlag bool, startDateStr, sqlObjectIds string) error
 	FindDataMigrationExportedPeriod(meteringPointId string, periodFromDate, periodToDate time.Time) (time.Time, bool, error)
 	SetSQLUpdateStatusToRunning(migrationRunId int) error
 	SetSQLUpdateStatusToFinished(migrationRunId int) error
@@ -397,17 +397,19 @@ func (i *Impl) SchedulerWorker() (*models.ScheduledRun, int, error) {
 }
 
 // GetNumberOfMeteringPoints finds the number of metering points to be migrated (all or a subset defined in the config file)
-func (i *Impl) GetNumberOfMeteringPoints(sqlFlag bool, sqlCount string) (*int, error) {
+func (i *Impl) GetNumberOfMeteringPoints(sqlFlag bool, startDateStr, sqlCount string) (*int, error) {
 
 	var meteringPointCount int
 	query := ""
+	var err error
 	if sqlFlag {
 		query = sqlCount
+		err = i.Db.QueryRow(query).Scan(&meteringPointCount)
 	} else {
-		query = "select count(distinct(objectid)) from reading.m_meterpoint"
+		query = sqls.GetCountUniqueMeteringPoints()
+		err = i.Db.QueryRow(query, startDateStr, startDateStr).Scan(&meteringPointCount)
 	}
 
-	err := i.Db.QueryRow(query).Scan(&meteringPointCount)
 	if err != nil {
 		(*i.LogFileLogger).Error(err)
 		return nil, err
@@ -417,26 +419,30 @@ func (i *Impl) GetNumberOfMeteringPoints(sqlFlag bool, sqlCount string) (*int, e
 }
 
 // GetMeteringPoints populates the channel with the metering points that will be migrated (all or a subset defined in the config file)
-func (i *Impl) GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, mpFlag bool, sqlObjectIds string) error {
+func (i *Impl) GetMeteringPoints(meteringPoints chan<- []string, nWorkload int, mpFlag bool, startDateStr, sqlObjectIds string) error {
 
 	//Variable to hold a list of meteringPoints equal to the number specified in nWorkload
 	var meteringPointSlice []string
 
 	//Prepare SQL statement to fetch meteringPoints to migrate
 	query := ""
+	var rows *sql.Rows
+	var err error
 	if mpFlag {
 		query = sqlObjectIds
+		rows, err = i.Db.Query(query)
 	} else {
-		query = "select distinct(objectid) from reading.m_meterpoint"
+		query = sqls.GetFindUniqueMeteringPoints()
+		rows, err = i.Db.Query(query, startDateStr, startDateStr)
 	}
 
-	//Run the prepared SQL statement
-	rows, err := i.Db.Query(query)
 	if err != nil {
 		(*i.LogFileLogger).Error(err)
 		return err
 	}
 	defer rows.Close()
+
+	//Run the prepared SQL statement
 
 	//Loop through the metering points returned from the database
 	var objectId string
@@ -846,6 +852,7 @@ func (i *Impl) CreateRSM012Message(data models.Data) ([]TimeSeriesInfo, error) {
 	objectId := data.MeteringPointData.MeteringPointId
 	gridArea := data.MeteringPointData.MasterData[0].GridArea
 	reasonForReading := "50"
+	transrefsStr := ""
 
 	for _, seriesData := range data.TimeSeries {
 		var meteringPointSeqNo = -1
@@ -932,7 +939,7 @@ func (i *Impl) CreateRSM012Message(data models.Data) ([]TimeSeriesInfo, error) {
 			}
 		}
 
-		timeSeriesInfoArray = append(timeSeriesInfoArray, TimeSeriesInfo{Transref: transref, MeterpointId: objectId})
+		transrefsStr = "last transref: " + transref
 
 		err = tx.Commit()
 		if err != nil {
@@ -942,6 +949,7 @@ func (i *Impl) CreateRSM012Message(data models.Data) ([]TimeSeriesInfo, error) {
 
 		messageSeqNo++
 	}
+	timeSeriesInfoArray = append(timeSeriesInfoArray, TimeSeriesInfo{Transref: transrefsStr, MeterpointId: objectId})
 
 	return timeSeriesInfoArray, nil
 }
@@ -999,9 +1007,9 @@ func (i *Impl) CreateRSM012MessageRecipient(serieMessageSeqNo int, reasonForRead
 	_, err = sqlStmtInsertRecipient.Exec(seqNumber, "D3M", senderId, recipientId, transRef, serieMessageSeqNo, breakStrList.String())
 	if err != nil {
 		(*i.LogFileLogger).Error(err)
-		return transRef, err
+		return "", err
 	} else {
-		return "", nil
+		return transRef, nil
 	}
 }
 

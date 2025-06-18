@@ -229,6 +229,7 @@ SELECT -- values of periodic (monthly) time series in IS CHANGE
 FROM ((SELECT per.*, md.* FROM periodic_value per LEFT JOIN message_data md ON md.message_id = per.sender_ref)) pv) v
  JOIN METERING_POINT m ON m.mpoint_seqno = v.mpoint_seqno
 where meldingsref is null 
+and not exists(select 1 FROM change.s_serie_message msg WHERE  msg.UTVEKSLINGSOBJEKTNR = m.mpoint_seqno and abs(msg.end_time - valid_to_date) = 0  and abs(msg.SERIE_TIMESTAMP - inserted_timestamp) = 0)
  `
 	//Set the order of the SQL statement
 	sqlOrder := `   ORDER BY metering_point_id, valid_from_date, resolution, INSERTED_TIMESTAMP, historical_flag, meldingsref asc`
@@ -344,36 +345,36 @@ func GetDataMigrationExportedPeriodForMp(meterpointId string) string {
 
 // GetSeriesMessSeqNo Find the next id for use in a new RSM-012 message
 func GetSeriesMessSeqNo() string {
-	return "select SEQ_SERIE_MESS_SEQNO.NEXTVAL from dual"
+	return "select change.SEQ_SERIE_MESS_SEQNO.NEXTVAL from dual"
 }
 
 // GetRecipientSeqNo Find the next id for use in the recipient for a new RSM-012 message
 func GetRecipientSeqNo() string {
-	return "select SEQ_RECIPIENT_SEQNO.NEXTVAL from dual"
+	return "select change.SEQ_RECIPIENT_SEQNO.NEXTVAL from dual"
 }
 
 // GetSettlementMethodType Find the settlement method for the give date
 func GetSettlementMethodType() string {
-	return "select avregningsmetode from s_kontrakt where utvekslingsobjektnr = :meteringpointSeqNo and fradato <= TO_DATE(:activeDate, 'DD-MM-YYYY HH24:MI:SS') and (tildato is null or tildato >  TO_DATE(:activeDate2, 'DD-MM-YYYY HH24:MI:SS'))"
+	return "select avregningsmetode from change.s_kontrakt where utvekslingsobjektnr = :meteringpointSeqNo and fradato <= TO_DATE(:activeDate, 'DD-MM-YYYY HH24:MI:SS') and (tildato is null or tildato >  TO_DATE(:activeDate2, 'DD-MM-YYYY HH24:MI:SS'))"
 }
 
 // GetMeteringPointInfo Find information about the meteringPoint
 func GetMeteringPointInfo() string {
-	return "select utvekslingsobjektnr, object_type,external_type_code from s_utvekslingsobjekt where objectid = :meteringpointId"
+	return "select utvekslingsobjektnr, object_type,external_type_code from change.s_utvekslingsobjekt where objectid = :meteringpointId"
 }
 
 // GetMarketActorByRole Get the marketaAtor by role
 func GetMarketActorByRole() string {
-	return "select bal.balanseansv_id from s_balanseansvarlig bal, s_actor_role rol where rol.role_type = :role and rol.actor_id = bal.balanseansv_id"
+	return "select bal.balanseansv_id from change.s_balanseansvarlig bal, change.s_actor_role rol where rol.role_type = :role and rol.actor_id = bal.balanseansv_id"
 }
 
 // GetBreakRules Get the fields used in the break strings
 func GetBreakRules() string {
-	return "select FELTKODE from s_break_rule where inhouseformat = 'MSCONS' and meldingstype = 'TSE' and undertype = 'TD' and versjon = 'D4.0' and utility_type = 'EP'"
+	return "select FELTKODE from change.s_break_rule where inhouseformat = 'MSCONS' and meldingstype = 'TSE' and undertype = 'TD' and versjon = 'D4.0' and utility_type = 'EP'"
 }
 
 func GetSQLInsertSerieMessage() string {
-	return " insert into s_serie_message " +
+	return " insert into change.s_serie_message " +
 		" (SERIE_MESS_SEQNO, REGIME, MELDINGSTYPE, UNDERTYPE,INN_UT, UTVEKSLINGSOBJEKTNR, FRADATO, SERIE_ID,SERIE_ID_KODANSV,MAALERID_MLD,RETNING,DATO_SIST_ENDRET, SIGN_SIST_ENDRET, OFF_NETTOMRAADE, GENERERT_DATO, STATUS,START_TIME, END_TIME, PTYP_KODANSV, " +
 		"PRODUKTTYPE, CH_INT_PROD_CODE,GMT_REFERENCE,SALES_CHANNEL,TIMESERIES_TYPE,KEYVALUE1,KEYVALUE2, KEYVALUE3, KEYVALUE4,BRESP_ID ,BRESP_QUAL,BRESP_LISTRESP,BSUP_ID,BSUP_QUAL,BSUP_LISTRESP,DE_NUMBER,DE_NUMBER_INFEED,GROP_ID,GROP_QUAL," +
 		"GROP_LISTRESP,GROP_INFEED_ID,GROP_INFEED_QUAL,GROP_INFEED_LISTRESP,OFF_NETTOMRAADE2,EDI_OBJECT_TYPE," +
@@ -391,18 +392,30 @@ func GetSQLInsertSerieMessage() string {
 }
 
 func GetSQLInsertSerieCounter() string {
-	return " INSERT INTO s_serie_counter (TELLEVNR,SERIE_MESS_SEQNO,BENEVNING,RESOLUTION,RETNING,SUM_SERIES) " +
+	return " INSERT INTO change.s_serie_counter (TELLEVNR,SERIE_MESS_SEQNO,BENEVNING,RESOLUTION,RETNING,SUM_SERIES) " +
 		"VALUES ('1',:serieMesgSeqNo,:unit,:resolution,'+',:sumSeries)"
 
 }
 
 func GetSQLInsertSerieValue() string {
-	return " INSERT INTO S_SERIE_VALUE (LIST_NO,TELLEVNR,SERIE_MESS_SEQNO,VALUE_LIST,VALUE_QUAL_LIST,START_TIME_LIST,COMPLETENESS_LIST, PRICE_LIST, AMOUNT_LIST) " +
+	return " INSERT INTO change.S_SERIE_VALUE (LIST_NO,TELLEVNR,SERIE_MESS_SEQNO,VALUE_LIST,VALUE_QUAL_LIST,START_TIME_LIST,COMPLETENESS_LIST, PRICE_LIST, AMOUNT_LIST) " +
 		"VALUES (:listNo,1,:serieMesgSeqNo,:valueList,:qualityList,:startTimeList, :completenessList, null, null)"
 	//return " INSERT INTO S_SERIE_VALUE (LIST_NO,TELLEVNR,SERIE_MESS_SEQNO,VALUE_LIST,VALUE_QUAL_LIST,START_TIME_LIST,COMPLETENESS_LIST) VALUES (1,1,100000002274,'0','?','202312312300', '100');"
 }
 
 func GetSQLInsertRecipient() string {
-	return " INSERT INTO s_recipient (RECIPIENT_SEQNO,SENDER_ROLE,RECIPIENT_ROLE,SENDING_RULE,MELDINGSNR,SENDER_ID,RECIPIENT_ID,TRANSREF,TRANSFER_MEDIUM,TESTINDIKATOR,GODKJENT,SENDT_MOTTATT_STATUS,DATA_KILDE,MELDINGSNR_DATA,DUPLICATE_NO,MESSAGE_SUBTYPE,BREAK_STRING) " +
+	return " INSERT INTO change.s_recipient (RECIPIENT_SEQNO,SENDER_ROLE,RECIPIENT_ROLE,SENDING_RULE,MELDINGSNR,SENDER_ID,RECIPIENT_ID,TRANSREF,TRANSFER_MEDIUM,TESTINDIKATOR,GODKJENT,SENDT_MOTTATT_STATUS,DATA_KILDE,MELDINGSNR_DATA,DUPLICATE_NO,MESSAGE_SUBTYPE,BREAK_STRING) " +
 		"VALUES (:seqNumber,'DHUB',:recipientRole,'DH3_QUEUE',null,:senderId,:recipientId,:transref,'E','P','J','2','S',:serieMessageSeqNo,'0','TP',:breakString)"
+}
+
+func GetFindUniqueMeteringPoints() string {
+	return "select distinct(m.objectid) from reading.m_meterpoint m where m.external_type_code not in ('D04','D15') " +
+		" and not exists (select 1 from change.S_LOSS_FACTORS  where utvekslingsobjektnr = m.mpoint_seqno and fradato < TO_DATE(:startDate1DDMMYYYYHHMISS, 'DD.MM.YYYY HH24:MI:SS') and (tildato is null or tildato >= TO_DATE(:startDate2DDMMYYYYHHMISS, 'DD.MM.YYYY HH24:MI:SS'))) " +
+		" and not exists (select 1 from change.S_REGISTERED_METERINGPOINT  where utvekslingsobjektnr = m.mpoint_seqno and REGISTER_TYPE = 'NEG_RESIDUAL' and HISTORICAL_TIMESTAMP is null)"
+}
+
+func GetCountUniqueMeteringPoints() string {
+	return "select count(distinct(m.objectid)) from reading.m_meterpoint m where m.external_type_code not in ('D04','D15') " +
+		" and not exists (select 1 from change.S_LOSS_FACTORS  where utvekslingsobjektnr = m.mpoint_seqno and fradato < TO_DATE(:startDate1DDMMYYYYHHMISS, 'DD.MM.YYYY HH24:MI:SS') and (tildato is null or tildato >= TO_DATE(:startDate2DDMMYYYYHHMISS, 'DD.MM.YYYY HH24:MI:SS'))) " +
+		" and not exists (select 1 from change.S_REGISTERED_METERINGPOINT  where utvekslingsobjektnr = m.mpoint_seqno and REGISTER_TYPE = 'NEG_RESIDUAL' and HISTORICAL_TIMESTAMP is null)"
 }

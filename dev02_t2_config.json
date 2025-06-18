@@ -1,8 +1,8 @@
 {
   "FILE_LOCATION":   "./out/DEV02",
-  "SQL_ITEM_COUNT":  "select count(*) from reading.m_meterpoint where off_netarea = 909",
-  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where  off_netarea = 909",
-  "DEBUG_LOGGING":   true,
+  "SQL_ITEM_COUNT":  "select count(distinct(objectid)) from reading.m_meterpoint where off_netarea = '902'",
+  "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where off_netarea = '902'" ,
+  "DEBUG_LOGGING":   false,
   "RENAME_BULK":     3,
   "MAX_LOGFILE_SIZE": 100,
   "OUTPUT_TYPE":     "json"

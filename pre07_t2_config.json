@@ -3,6 +3,6 @@
   "SQL_ITEM_COUNT":  "select count(distinct(objectid)) from reading.m_meterpoint where  off_netarea = '791'",
   "SQL_ITEM_ID":     "select distinct(objectid) from reading.m_meterpoint where  off_netarea = '791'",
   "DEBUG_LOGGING":   false,
-  "MAX_LOGFILE_SIZE": 100,
+  "MAX_LOGFILE_SIZE": 1000,
   "OUTPUT_TYPE":     "json"
 }

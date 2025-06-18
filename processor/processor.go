@@ -26,7 +26,7 @@ func MigrateTimeSeries(nWorkers, nWorkload int, repo repository.Repository, file
 
 	var meteringPointCount *int
 	//Find the number of metering points to migrate
-	meteringPointCount, err = repo.GetNumberOfMeteringPoints(sqlFlag, sqlItemCount)
+	meteringPointCount, err = repo.GetNumberOfMeteringPoints(sqlFlag, fromTimeFormatted, sqlItemCount)
 	if err != nil {
 		return false, err
 	}
@@ -36,7 +36,7 @@ func MigrateTimeSeries(nWorkers, nWorkload int, repo repository.Repository, file
 	meteringPoints := make(chan []string, *meteringPointCount)
 
 	//Populate the channel with the meteringPoints to migrate
-	err = repo.GetMeteringPoints(meteringPoints, nWorkload, sqlFlag, sqlItemIds)
+	err = repo.GetMeteringPoints(meteringPoints, nWorkload, sqlFlag, fromTimeFormatted, sqlItemIds)
 	if err != nil {
 		return false, err
 	}
@@ -92,29 +92,31 @@ func MigrateTimeSeries(nWorkers, nWorkload int, repo repository.Repository, file
 		}
 	}
 
-	//replaceLogFile .tmp to .json in the folder
-	filenames, err := renameFiles(fileLocation, config.GetTmpExtension(), config.GetFinalExtension(), repo.GetLogger())
-	if err == nil {
-		if config.GetScheduledRunFromMigrationTable() {
-			//Insert the filenames in the progress table
-			for i := 0; i < len(filenames); i++ {
-				//Run the prepared SQL query that inserts to the progress table
-				filename := filenames[i]
-				strId := getItemFromFileName(filenames[i])
-				info := allItemsInfo[strId]
-				fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", info.transactionIdCountActual, info.transactionIdCountHist, int(info.sumActualReadingValues))
+	if outputType == "json" {
+		//replaceLogFile .tmp to .json in the folder
+		filenames, err := renameFiles(fileLocation, config.GetTmpExtension(), config.GetFinalExtension(), repo.GetLogger())
+		if err == nil {
+			if config.GetScheduledRunFromMigrationTable() {
+				//Insert the filenames in the progress table
+				for i := 0; i < len(filenames); i++ {
+					//Run the prepared SQL query that inserts to the progress table
+					filename := filenames[i]
+					strId := getItemFromFileName(filenames[i])
+					info := allItemsInfo[strId]
+					fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", info.transactionIdCountActual, info.transactionIdCountHist, int(info.sumActualReadingValues))
 
-				if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
-					err = repo.ExecSqlstmtTimeSeriesFound(run.MigrationRunId, fromTimeFormatted, toTimeFormatted, filename, fileDetails, info.meteringPointId)
-					if err != nil {
-						(*repo.GetLogger()).Error(err)
-						return false, err
+					if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
+						err = repo.ExecSqlstmtTimeSeriesFound(run.MigrationRunId, fromTimeFormatted, toTimeFormatted, filename, fileDetails, info.meteringPointId)
+						if err != nil {
+							(*repo.GetLogger()).Error(err)
+							return false, err
+						}
 					}
 				}
 			}
+		} else {
+			return false, err
 		}
-	} else {
-		return false, err
 	}
 	return returnValue, mainErr
 }
@@ -211,6 +213,7 @@ func TimeSeriesWorker(repo repository.Repository, items <-chan []string, runTo t
 						strId := s.MeterpointId
 
 						fileDetails := fmt.Sprintf("transaction_count_actual_time_series:%d;transaction_count_historical_time_series=%d;sum_actual_reading_values=%d", timeSeriesInfo[strId].transactionIdCountActual, timeSeriesInfo[strId].transactionIdCountHist, int(timeSeriesInfo[strId].sumActualReadingValues))
+						(*repo.GetLogger()).Info(s.MeterpointId)
 
 						if !skipDBUpdate && config.GetScheduledRunFromMigrationTable() {
 							err = repo.ExecSqlstmtTimeSeriesFound(migrationRunId, fromTimeFormatted, toTimeFormatted, s.Transref, fileDetails, s.MeterpointId)
@@ -461,6 +464,7 @@ func getTimeSeriesList(meteringPointId string, processedFromTime, processedUntil
 			prevResolution = resolution
 
 			timeSeriesData.TimeSeriesValues = timeSerieValues
+			timeSeriesData.RawTimeSeriesValues = valueData
 			timeSerieValues = nil
 			timeSeriesList = append(timeSeriesList, timeSeriesData)
 		}
